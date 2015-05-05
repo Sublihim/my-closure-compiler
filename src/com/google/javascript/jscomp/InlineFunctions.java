@@ -21,6 +21,7 @@ import com.google.javascript.jscomp.FunctionInjector.CanInlineResult;
 import com.google.javascript.jscomp.FunctionInjector.InliningMode;
 import com.google.javascript.jscomp.NodeTraversal.AbstractPostOrderCallback;
 import com.google.javascript.jscomp.NodeTraversal.Callback;
+import com.google.javascript.rhino.JSDocInfo;
 import com.google.javascript.rhino.Node;
 import com.google.javascript.rhino.Token;
 
@@ -721,6 +722,11 @@ class InlineFunctions implements CompilerPass {
    * @return Whether inlining the function reduces code size.
    */
   private boolean inliningLowersCost(FunctionState fs) {
+	JSDocInfo info = NodeUtil.getBestJSDocInfo(fs.getFn().getFunctionNode());
+	if (info != null && info.isInlineType()) {
+		return true;
+	} else {
+		
     return injector.inliningLowersCost(
         fs.getModule(),
         fs.getFn().getFunctionNode(),
@@ -728,6 +734,7 @@ class InlineFunctions implements CompilerPass {
         fs.getNamesToAlias(),
         fs.canRemove(),
         fs.getReferencesThis());
+	}
   }
 
 

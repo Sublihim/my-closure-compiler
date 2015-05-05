@@ -38,6 +38,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import jdk.nashorn.internal.ir.ContinueNode;
+
 /**
  * A parser for JSDoc comments.
  *
@@ -824,6 +826,14 @@ public final class JsDocInfoParser {
           }
           return eatUntilEOLIfNotAnnotation();
 
+        case INLINE:
+          if (!jsdocBuilder.recordInline()) {
+        	parser.addParserWarning("msg.jsdoc.inline", 
+        			stream.getLineno(), stream.getCharno());
+          }
+          token = eatTokensUntilEOL();
+          return eatUntilEOLIfNotAnnotation();
+        	
         case NO_SIDE_EFFECTS:
           if (!jsdocBuilder.recordNoSideEffects()) {
             parser.addParserWarning("msg.jsdoc.nosideeffects",

@@ -368,6 +368,8 @@ class DevirtualizePrototypeMethods
       block.addChildAfter(newVarNode, expr);
     }
 
+    functionNode.setJSDocInfo(parent.getJSDocInfo());
+    
     // add extra argument
     String self = newMethodName + "$self";
     Node argList = functionNode.getFirstChild().getNext();

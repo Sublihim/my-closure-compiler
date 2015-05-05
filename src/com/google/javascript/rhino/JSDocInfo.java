@@ -415,15 +415,16 @@ public class JSDocInfo implements Serializable {
   @SuppressWarnings("unused")
   private static final int MASK_UNUSED_2      = 0x00010000; //
   private static final int MASK_NOCOMPILE     = 0x00020000; // @nocompile
-  private static final int MASK_CONSISTIDGEN  = 0x00040000; // @consistentIdGenerator
-  private static final int MASK_IDGEN         = 0x00080000; // @idGenerator
-  private static final int MASK_EXPOSE        = 0x00100000; // @expose
-  private static final int MASK_UNRESTRICTED  = 0x00200000; // @unrestricted
-  private static final int MASK_STRUCT        = 0x00400000; // @struct
-  private static final int MASK_DICT          = 0x00800000; // @dict
-  private static final int MASK_STALBEIDGEN   = 0x01000000; // @stableIdGenerator
-  private static final int MASK_MAPPEDIDGEN   = 0x02000000; // @idGenerator {mapped}
-  private static final int MASK_NOCOLLAPSE    = 0x04000000; // @nocollapse
+  private static final int MASK_INLINE        = 0x00040000; // @inline
+  private static final int MASK_CONSISTIDGEN  = 0x00080000; // @consistentIdGenerator
+  private static final int MASK_IDGEN         = 0x00100000; // @idGenerator
+  private static final int MASK_EXPOSE        = 0x00200000; // @expose
+  private static final int MASK_UNRESTRICTED  = 0x00400000; // @unrestricted
+  private static final int MASK_STRUCT        = 0x00800000; // @struct
+  private static final int MASK_DICT          = 0x01000000; // @dict
+  private static final int MASK_STALBEIDGEN   = 0x02000000; // @stableIdGenerator
+  private static final int MASK_MAPPEDIDGEN   = 0x04000000; // @idGenerator {mapped}
+  private static final int MASK_NOCOLLAPSE    = 0x08000000; // @nocollapse
 
   // 3 bit type field stored in the top 3 bits of the most significant
   // nibble.
@@ -547,6 +548,10 @@ public class JSDocInfo implements Serializable {
     setFlag(value, MASK_HIDDEN);
   }
 
+  void setInline(boolean value) {
+	  setFlag(value, MASK_INLINE);
+  }
+  
   void setShouldPreserveTry(boolean value) {
     setFlag(value, MASK_PRESERVETRY);
   }
@@ -686,6 +691,15 @@ public class JSDocInfo implements Serializable {
     return getFlag(MASK_HIDDEN);
   }
 
+  /**
+   * 
+   * Returns whether the {@code @inline} annotation is present on this
+   * {@link JSDocInfo}.
+   */
+  public boolean isInline() {
+	  return getFlag(MASK_INLINE);
+  }
+  
   /**
    * Returns whether the {@code @preserveTry} annotation is present on this
    * {@link JSDocInfo}.

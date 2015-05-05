@@ -43,6 +43,7 @@ enum Annotation {
   FILE_OVERVIEW,
   HIDDEN,
   IDGENERATOR,
+  INLINE,
   IMPLEMENTS,
   IMPLICIT_CAST,
   INHERIT_DOC,
@@ -106,6 +107,7 @@ enum Annotation {
       put("final", Annotation.CONSTANT).
       put("hidden", Annotation.HIDDEN).
       put("idGenerator", Annotation.IDGENERATOR).
+      put("inline", Annotation.INLINE).
       put("implements", Annotation.IMPLEMENTS).
       put("implicitCast", Annotation.IMPLICIT_CAST).
       put("inheritDoc", Annotation.INHERIT_DOC).
