@@ -723,7 +723,7 @@ class InlineFunctions implements CompilerPass {
    */
   private boolean inliningLowersCost(FunctionState fs) {
 	JSDocInfo info = NodeUtil.getBestJSDocInfo(fs.getFn().getFunctionNode());
-	if (info != null && info.isInlineType()) {
+	if (info != null && info.isInline()) {
 		return true;
 	} else {
 		
