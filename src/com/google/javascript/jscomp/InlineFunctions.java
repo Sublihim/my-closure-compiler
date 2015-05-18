@@ -21,6 +21,7 @@ import com.google.javascript.jscomp.FunctionInjector.CanInlineResult;
 import com.google.javascript.jscomp.FunctionInjector.InliningMode;
 import com.google.javascript.jscomp.NodeTraversal.AbstractPostOrderCallback;
 import com.google.javascript.jscomp.NodeTraversal.Callback;
+import com.google.javascript.rhino.jstype.JSType;
 import com.google.javascript.rhino.JSDocInfo;
 import com.google.javascript.rhino.Node;
 import com.google.javascript.rhino.Token;
@@ -192,12 +193,35 @@ class InlineFunctions implements CompilerPass {
     public void visit(NodeTraversal t, Node n, Node parent) {
       if ((t.inGlobalScope() && inlineGlobalFunctions)
           || (!t.inGlobalScope() && inlineLocalFunctions)) {
+    	  
+    	boolean flInline = false;
+    	int fnsSize = fns.size();
+    	if (checkInlineNode(t)) {
+    		flInline = true;
+    	}
         findNamedFunctions(t, n, parent);
 
         findFunctionExpressions(t, n);
+        
+        if (flInline && fnsSize == fns.size()) {
+        	compiler.getErrorManager().report(CheckLevel.WARNING, 
+        			JSError.make(n, CheckLevel.WARNING, DiagnosticType.warning("Inline error", "InlineError")));
+        	flInline = false;
+        }
       }
     }
 
+    private boolean checkInlineNode (NodeTraversal t) {
+    	JSType jsType = t.getCurrentNode().getJSType();
+    	if (jsType != null) {
+    		JSDocInfo jsDocInfo = jsType.getJSDocInfo();
+    		if (jsDocInfo != null) {
+    			return jsDocInfo.isInline();
+    		}
+    	}
+    	return false;
+    }
+    
     public void findNamedFunctions(NodeTraversal t, Node n, Node parent) {
       if (!NodeUtil.isStatement(n)) {
         // There aren't any interesting functions here.
