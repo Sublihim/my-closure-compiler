@@ -76,6 +76,9 @@ class InlineFunctions implements CompilerPass {
   private final boolean enforceMaxSizeAfterInlining;
   private final int maxSizeAfterInlining;
 
+  static final DiagnosticType IMPOSSIBILITY_INLINE = DiagnosticType.warning(
+	      "JSC_IMPOSSIBILITY_INLINE", "impossibility inline function");
+    
   InlineFunctions(AbstractCompiler compiler,
       Supplier<String> safeNameIdSupplier,
       boolean inlineGlobalFunctions,
@@ -204,8 +207,7 @@ class InlineFunctions implements CompilerPass {
         findFunctionExpressions(t, n);
         
         if (flInline && fnsSize == fns.size()) {
-        	compiler.getErrorManager().report(CheckLevel.WARNING, 
-        			JSError.make(n, CheckLevel.WARNING, DiagnosticType.warning("Inline error", "InlineError")));
+        	compiler.report(t.makeError(n, IMPOSSIBILITY_INLINE));
         	flInline = false;
         }
       }
