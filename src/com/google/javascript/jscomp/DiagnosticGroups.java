@@ -93,7 +93,7 @@ public class DiagnosticGroups {
       + "newCheckTypes, nonStandardJsDocs, reportUnknownTypes, suspiciousCode, "
       + "strictModuleDepCheck, typeInvalidation, "
       + "undefinedNames, undefinedVars, unknownDefines, uselessCode, "
-      + "useOfGoogBase, visibility";
+      + "useOfGoogBase, visibility checkPossibilityInline";
 
   public static final DiagnosticGroup GLOBAL_THIS =
       DiagnosticGroups.registerGroup("globalThis",
@@ -461,6 +461,10 @@ public class DiagnosticGroups {
     DiagnosticGroups.registerGroup("invalidProvide",
         ProcessClosurePrimitives.INVALID_PROVIDE_ERROR);
   }
+  
+  public static final DiagnosticGroup INLINE_FUNCTION_CHECK =
+		  DiagnosticGroups.registerGroup("checkPossibilityInline",
+				  InlineFunctions.IMPOSSIBILITY_INLINE);
 
   /**
    * Adds warning levels by name.
