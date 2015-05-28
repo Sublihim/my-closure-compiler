@@ -93,7 +93,7 @@ public class DiagnosticGroups {
       + "newCheckTypes, nonStandardJsDocs, reportUnknownTypes, suspiciousCode, "
       + "strictModuleDepCheck, typeInvalidation, "
       + "undefinedNames, undefinedVars, unknownDefines, uselessCode, "
-      + "useOfGoogBase, visibility checkPossibilityInline";
+      + "useOfGoogBase, visibility, checkPossibilityInline";
 
   public static final DiagnosticGroup GLOBAL_THIS =
       DiagnosticGroups.registerGroup("globalThis",
