@@ -45,6 +45,7 @@ public final class DisambiguatePrivatePropertiesTest extends CompilerTestCase {
 
   @Override
   protected void setUp() throws Exception {
+    super.setUp();
     useGoogleCodingConvention = true;
   }
 
@@ -65,7 +66,7 @@ public final class DisambiguatePrivatePropertiesTest extends CompilerTestCase {
     testSame("({})['prop_'];");
     testSame("({'prop_': 1});");
     testSame("({get 'prop_'(){ return 1} });");
-    testSame("({set 'prop_'(a){this.a = 1} });");
+    testSame("({set 'prop_'(a){ this.a = 1} });");
 
     useGoogleCodingConvention = false;
 
@@ -73,7 +74,22 @@ public final class DisambiguatePrivatePropertiesTest extends CompilerTestCase {
     testSame("({}).prop_;");
     testSame("({prop_: 1});");
     testSame("({get prop_(){ return 1} });");
-    testSame("({set prop_(a){this.a = 1} });");
+    testSame("({set prop_(a){ this.a = 1} });");
+  }
+
+  public void testNoRenamingES6() {
+
+    testSame("({get ['prop_'](){ return 1} });");
+    testSame("({set ['prop_'](a){ this.a = 1} });");
+    testSame("({'prop_'(a){ this.a = 1} });");
+    testSame("({'prop_'(){} });");
+    testSame("({['prop_'](){} });");
+
+    useGoogleCodingConvention = false;
+
+    // Not when the coding convention doesn't understand it.
+    testSame("({prop_(){ return 1} });");
+    testSame("class C { method_(){return 1} }");
   }
 
   public void testRenaming1() {
@@ -92,9 +108,31 @@ public final class DisambiguatePrivatePropertiesTest extends CompilerTestCase {
         "({get prop_$0(){ return 1} });");
 
     test(
-        "({set prop_(a){this.a = 1} });",
-        "({set prop_$0(a){this.a = 1} });");
+        "({set prop_(a){ this.a = 1} });",
+        "({set prop_$0(a){ this.a = 1} });");
   }
+
+  public void testRenamingES6() {
+    test(
+        "({prop_(){ return 1} });",
+        "({prop_$0(){ return 1} });");
+    test(
+        "class C { method_(){return 1} }",
+        "class C { method_$0(){return 1} }");
+
+    test(
+        "class C { static method_(){return 1} }",
+        "class C { static method_$0(){return 1} }");
+
+    test(
+        "class C { async method_(){} }",
+        "class C { async method_$0(){} }");
+
+    test(
+        "class C { *method_(){} }",
+        "class C { *method_$0(){} }");
+  }
+
 
   public void testNoRenameIndirectProps() {
     useGoogleCodingConvention = true;
@@ -103,5 +141,6 @@ public final class DisambiguatePrivatePropertiesTest extends CompilerTestCase {
     testSame("({superClass_: 1});");
     testSame("({get superClass_(){ return 1} });");
     testSame("({set superClass_(a){this.a = 1} });");
+    testSame("({superClass_(){ return 1} });");
   }
 }

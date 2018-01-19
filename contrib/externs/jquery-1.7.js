@@ -1361,6 +1361,7 @@ jQuery.jqXHR.prototype.onreadystatechange = function (callback) {};
  * @param {function()=} failFilter
  * @param {function()=} progressFilter
  * @return {jQuery.jqXHR}
+ * @override
  */
 jQuery.jqXHR.prototype.pipe =
     function(doneFilter, failFilter, progressFilter) {};
@@ -1556,13 +1557,13 @@ jQuery.noConflict = function(removeAll) {};
 $.noConflict = function(removeAll) {};
 
 /**
- * @return {function()}
+ * @return {undefined}
  * @nosideeffects
  */
 jQuery.noop = function() {};
 
 /**
- * @return {function()}
+ * @return {undefined}
  * @nosideeffects
  */
 $.noop = function() {};

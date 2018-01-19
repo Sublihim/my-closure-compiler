@@ -16,21 +16,26 @@
 package com.google.javascript.jscomp.deps;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.mockito.Mockito.RETURNS_SMART_NULLS;
+import static org.mockito.Mockito.when;
 
-import junit.framework.TestCase;
-
+import com.google.javascript.jscomp.transpile.TranspileResult;
+import com.google.javascript.jscomp.transpile.Transpiler;
 import java.io.IOException;
+import java.nio.file.Paths;
+import junit.framework.TestCase;
+import org.mockito.Mockito;
 
 /**
  * Tests for ClosureBundler
  */
 public final class ClosureBundlerTest extends TestCase {
 
-  private static final DependencyInfo MODULE = new SimpleDependencyInfo(
-      null, null, null, null, true);
+  private static final DependencyInfo MODULE =
+      SimpleDependencyInfo.builder("", "").setGoogModule(true).build();
 
-  private static final DependencyInfo TRADITIONAL = new SimpleDependencyInfo(
-      null, null, null, null, false);
+  private static final DependencyInfo TRADITIONAL =
+      SimpleDependencyInfo.builder("", "").build();
 
   public void testGoogModule() throws IOException {
     StringBuilder sb = new StringBuilder();
@@ -48,7 +53,7 @@ public final class ClosureBundlerTest extends TestCase {
         .withSourceUrl("URL")
         .appendTo(sb, MODULE, "\"a string\"");
     assertThat(sb.toString())
-        .isEqualTo("goog.loadModule(\"\\x22a string\\x22\\n//# sourceURL\\x3dURL\\n\");");
+        .isEqualTo("goog.loadModule(\"\\x22a string\\x22\\n//# sourceURL\\x3dURL\\n\");\n");
   }
 
   public void testGoogModuleWithEval() throws IOException {
@@ -56,7 +61,7 @@ public final class ClosureBundlerTest extends TestCase {
     new ClosureBundler()
         .useEval(true)
         .appendTo(sb, MODULE, "\"a string\"");
-    assertThat(sb.toString()).isEqualTo("goog.loadModule(\"\\x22a string\\x22\");");
+    assertThat(sb.toString()).isEqualTo("goog.loadModule(\"\\x22a string\\x22\");\n");
   }
 
   public void testGoogModuleWithEvalWithURL() throws IOException {
@@ -66,7 +71,7 @@ public final class ClosureBundlerTest extends TestCase {
         .withSourceUrl("URL")
         .appendTo(sb, MODULE, "\"a string\"");
     assertThat(sb.toString())
-        .isEqualTo("goog.loadModule(\"\\x22a string\\x22\\n//# sourceURL\\x3dURL\\n\");");
+        .isEqualTo("goog.loadModule(\"\\x22a string\\x22\\n//# sourceURL\\x3dURL\\n\");\n");
   }
 
   public void testTraditional() throws IOException {
@@ -90,7 +95,7 @@ public final class ClosureBundlerTest extends TestCase {
     new ClosureBundler()
         .useEval(true)
         .appendTo(sb, TRADITIONAL, "\"a string\"");
-    assertThat(sb.toString()).isEqualTo("(0,eval(\"\\x22a string\\x22\"));");
+    assertThat(sb.toString()).isEqualTo("(0,eval(\"\\x22a string\\x22\"));\n");
   }
 
   public void testTraditionalWithEvalWithSourceUrl() throws IOException {
@@ -100,6 +105,30 @@ public final class ClosureBundlerTest extends TestCase {
         .withSourceUrl("URL")
         .appendTo(sb, TRADITIONAL, "\"a string\"");
     assertThat(sb.toString())
-        .isEqualTo("(0,eval(\"\\x22a string\\x22\\n//# sourceURL\\x3dURL\\n\"));");
+        .isEqualTo("(0,eval(\"\\x22a string\\x22\\n//# sourceURL\\x3dURL\\n\"));\n");
+  }
+
+  public void testTranspilation() throws IOException {
+    String input = "goog.module('Foo');\nclass Foo {}";
+
+    Transpiler transpiler = Mockito.mock(Transpiler.class, RETURNS_SMART_NULLS);
+    when(transpiler.runtime()).thenReturn("RUNTIME;");
+    when(transpiler.transpile(Paths.get("foo.js"), input))
+        .thenReturn(new TranspileResult(Paths.get("foo.js"), input, "TRANSPILED;", ""));
+
+    ClosureBundler bundler = new ClosureBundler(transpiler).withPath("foo.js");
+    StringBuilder sb = new StringBuilder();
+    bundler.appendRuntimeTo(sb);
+    bundler.appendTo(sb, MODULE, input);
+    assertThat(sb.toString())
+        .isEqualTo("RUNTIME;goog.loadModule(function(exports) {'use strict';TRANSPILED;\n"
+            + ";return exports;});\n");
+
+    // Without calling appendRuntimeTo(), the runtime is not included anymore.
+    sb = new StringBuilder();
+    bundler.appendTo(sb, MODULE, input);
+    assertThat(sb.toString())
+        .isEqualTo("goog.loadModule(function(exports) {'use strict';TRANSPILED;\n"
+            + ";return exports;});\n");
   }
 }

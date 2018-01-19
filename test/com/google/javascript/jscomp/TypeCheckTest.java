@@ -16,12 +16,19 @@
 
 package com.google.javascript.jscomp;
 
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.javascript.jscomp.TypeCheck.INSTANTIATE_ABSTRACT_CLASS;
+import static com.google.javascript.jscomp.parsing.JsDocInfoParser.BAD_TYPE_WIKI_LINK;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
+import com.google.javascript.jscomp.parsing.parser.FeatureSet;
+import com.google.javascript.jscomp.parsing.parser.FeatureSet.Feature;
 import com.google.javascript.jscomp.type.ClosureReverseAbstractInterpreter;
 import com.google.javascript.jscomp.type.SemanticReverseAbstractInterpreter;
+import com.google.javascript.rhino.IR;
 import com.google.javascript.rhino.InputId;
 import com.google.javascript.rhino.Node;
 import com.google.javascript.rhino.Token;
@@ -29,7 +36,6 @@ import com.google.javascript.rhino.jstype.FunctionType;
 import com.google.javascript.rhino.jstype.JSType;
 import com.google.javascript.rhino.jstype.JSTypeNative;
 import com.google.javascript.rhino.jstype.ObjectType;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -43,25 +49,36 @@ import java.util.Set;
 
 public final class TypeCheckTest extends CompilerTypeTestCase {
 
-  private CheckLevel reportMissingOverrides = CheckLevel.WARNING;
-
   private static final String SUGGESTION_CLASS =
-      "/** @constructor\n */\n" +
-      "function Suggest() {}\n" +
-      "Suggest.prototype.a = 1;\n" +
-      "Suggest.prototype.veryPossible = 1;\n" +
-      "Suggest.prototype.veryPossible2 = 1;\n";
+      "/** @constructor\n */\n"
+      + "function Suggest() {}\n"
+      + "Suggest.prototype.a = 1;\n"
+      + "Suggest.prototype.veryPossible = 1;\n"
+      + "Suggest.prototype.veryPossible2 = 1;\n";
+
+  private static final String ILLEGAL_PROPERTY_CREATION_MESSAGE = "Cannot add a property"
+      + " to a struct instance after it is constructed. (If you already declared the property,"
+      + " make sure to give it a type.)";
 
   @Override
-  public void setUp() {
+  public void setUp() throws Exception {
     super.setUp();
-    reportMissingOverrides = CheckLevel.WARNING;
+    // Enable missing override checks that are disabled by default.
+    compiler.getOptions().setWarningLevel(DiagnosticGroups.MISSING_OVERRIDE, CheckLevel.WARNING);
   }
 
-  public void testInitialTypingScope() {
+  @Override
+  protected CompilerOptions getDefaultOptions() {
+    CompilerOptions options = super.getDefaultOptions();
+    options.setLanguageIn(LanguageMode.ECMASCRIPT_2015);
+    options.setLanguageOut(LanguageMode.ECMASCRIPT5);
+    return options;
+  }
+
+  public void testInitialTypingScope() throws Exception {
     TypedScope s = new TypedScopeCreator(compiler,
         CodingConventions.getDefault()).createInitialScope(
-            new Node(Token.BLOCK));
+            new Node(Token.ROOT));
 
     assertTypeEquals(ARRAY_FUNCTION_TYPE, s.getVar("Array").getType());
     assertTypeEquals(BOOLEAN_OBJECT_FUNCTION_TYPE,
@@ -91,9 +108,9 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testPrivateType() throws Exception {
     testTypes(
         "/** @private {number} */ var x = false;",
-        "initializing variable\n" +
-        "found   : boolean\n" +
-        "required: number");
+        "initializing variable\n"
+        + "found   : boolean\n"
+        + "required: number");
   }
 
   public void testTypeCheck1() throws Exception {
@@ -101,10 +118,11 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testTypeCheck2() throws Exception {
-    testTypes("/**@return {void}*/function foo(){ var x=foo(); x--; }",
-        "increment/decrement\n" +
-        "found   : undefined\n" +
-        "required: number");
+    testTypes(
+        "/**@return {void}*/function foo(){ var x=foo(); x--; }",
+        "increment/decrement\n"
+        + "found   : undefined\n"
+        + "required: number");
   }
 
   public void testTypeCheck4() throws Exception {
@@ -112,16 +130,17 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testTypeCheck5() throws Exception {
-    testTypes("/**@return {void}*/function foo(){ var a = +foo(); }",
-        "sign operator\n" +
-        "found   : undefined\n" +
-        "required: number");
+    testTypes(
+        "/**@return {void}*/function foo(){ var a = +foo(); }",
+        "sign operator\n"
+        + "found   : undefined\n"
+        + "required: number");
   }
 
   public void testTypeCheck6() throws Exception {
     testTypes(
-        "/**@return {void}*/function foo(){" +
-        "/** @type {undefined|number} */var a;if (a == foo())return;}");
+        "/**@return {void}*/function foo(){"
+        + "/** @type {undefined|number} */var a;if (a == foo())return;}");
   }
 
   public void testTypeCheck8() throws Exception {
@@ -137,12 +156,12 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testTypeCheck11() throws Exception {
-    testTypes("/**@type !Number */var a;" +
-        "/**@type !String */var b;" +
-        "a = b;",
-        "assignment\n" +
-        "found   : String\n" +
-        "required: Number");
+    testTypes("/**@type {!Number} */var a;"
+        + "/**@type {!String} */var b;"
+        + "a = b;",
+        "assignment\n"
+        + "found   : String\n"
+        + "required: Number");
   }
 
   public void testTypeCheck12() throws Exception {
@@ -160,7 +179,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testTypeCheck14() throws Exception {
-    testTypes("/**@param opt_a*/function foo(opt_a){}");
+    testTypes("/**@param {?} opt_a*/function foo(opt_a){}");
   }
 
 
@@ -211,7 +230,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testTypeCheck21() throws Exception {
-    testTypes("/** @type Array<String> */var foo;");
+    testTypes("/** @type {Array<String>} */var foo;");
   }
 
   public void testTypeCheck22() throws Exception {
@@ -222,30 +241,39 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testTypeCheck23() throws Exception {
-    testTypes("/** @type {(Object,Null)} */var foo; foo = null;");
+    testTypes("/** @type {(Object|Null)} */var foo; foo = null;");
   }
 
   public void testTypeCheck24() throws Exception {
     testTypes("/** @constructor */function MyType(){}\n" +
-        "/** @type {(MyType,Null)} */var foo; foo = null;");
+        "/** @type {(MyType|Null)} */var foo; foo = null;");
   }
 
 
   public void testTypeCheck25() throws Exception {
-    testTypes("function foo(/** {a: number} */ obj) {};"
-        + "foo({b: 'abc'});",
-        "actual parameter 1 of foo does not match formal parameter\n" +
-            "found   : {a: (number|undefined), b: string}\n" +
-            "required: {a: number}");
+    testTypes(
+        LINE_JOINER.join(
+            "function foo(/** {a: number} */ obj) {};",
+            "foo({b: 'abc'});"),
+        LINE_JOINER.join(
+            "actual parameter 1 of foo does not match formal parameter",
+            "found   : {a: (number|undefined), b: string}",
+            "required: {a: number}",
+            "missing : []",
+            "mismatch: [a]"));
   }
 
   public void testTypeCheck26() throws Exception {
-    testTypes("function foo(/** {a: number} */ obj) {};"
-        + "foo({a: 'abc'});",
-        "actual parameter 1 of foo does not match formal parameter\n"
-        + "found   : {a: (number|string)}\n"
-        + "required: {a: number}");
-
+    testTypes(
+        LINE_JOINER.join(
+            "function foo(/** {a: number} */ obj) {};",
+            "foo({a: 'abc'});"),
+        LINE_JOINER.join(
+            "actual parameter 1 of foo does not match formal parameter",
+            "found   : {a: (number|string)}",
+            "required: {a: number}",
+            "missing : []",
+            "mismatch: [a]"));
   }
 
   public void testTypeCheck27() throws Exception {
@@ -294,6 +322,22 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "found   : boolean\n" +
         "required: Enum<string>",
         false);
+  }
+
+  public void testDontCrashOnRecursiveTemplateReference() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+          "/**",
+          " * @constructor @struct",
+          " * @implements {Iterable<!Array<KEY|VAL>>}",
+          " * @template KEY, VAL",
+          " */",
+          "function Map(opt_iterable) {}"),
+        LINE_JOINER.join(
+          "/** @constructor @implements {Iterable<VALUE>} @template VALUE */",
+          "function Foo() {",
+          "  /** @type {!Map<VALUE, VALUE>} */ this.map = new Map;",
+          "}"));
   }
 
   public void testTemplatizedArray1() throws Exception {
@@ -360,6 +404,19 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "required: string");
   }
 
+  public void testTemplatizedObjectOnWindow() throws Exception {
+    testTypesWithExtraExterns(
+        "/** @constructor */ window.Object = Object;",
+        LINE_JOINER.join(
+            "/** @param {!window.Object<number>} a",
+            " *  @return {string}",
+            " */ var f = function(a) { return a[0]; };"),
+        LINE_JOINER.join(
+            "inconsistent return type",
+            "found   : number",
+            "required: string"));
+  }
+
   public void testTemplatizedObject2() throws Exception {
     testTypes("/** @param {!Object<string,number>} a\n" +
         "* @return {string}\n" +
@@ -404,7 +461,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testOptionalParameterComparedToUndefined() throws Exception {
-    testTypes("/**@param opt_a {Number}*/function foo(opt_a)" +
+    testTypes("/** @param  {Number} opt_a */function foo(opt_a)" +
         "{if (opt_a==undefined) var b = 3;}");
   }
 
@@ -449,7 +506,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testOptionalArgFunctionParamError() throws Exception {
     String expectedWarning =
-        "Bad type annotation. variable length argument must be last";
+        "Bad type annotation. variable length argument must be last." + BAD_TYPE_WIKI_LINK;
     testTypes("/** @param {function(...number, number=)} a */" +
               "function f(a) {};", expectedWarning, false);
   }
@@ -547,16 +604,16 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testNullAnd() throws Exception {
-    testTypes("/** @type null */var x;\n" +
-        "/** @type number */var r = x && x;",
+    testTypes("/** @type {null} */var x;\n" +
+        "/** @type {number} */var r = x && x;",
         "initializing variable\n" +
         "found   : null\n" +
         "required: number");
   }
 
   public void testNullOr() throws Exception {
-    testTypes("/** @type null */var x;\n" +
-        "/** @type number */var r = x || x;",
+    testTypes("/** @type {null} */var x;\n" +
+        "/** @type {number} */var r = x || x;",
         "initializing variable\n" +
         "found   : null\n" +
         "required: number");
@@ -928,9 +985,9 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testTypes(
         "var x = {" +
           "/** @return {number} */ a:12 };\n",
-          "assignment to property a of {a: function (): number}\n" +
+          "assignment to property a of {a: function(): number}\n" +
           "found   : number\n" +
-          "required: function (): number");
+          "required: function(): number");
   }
 
   public void testObjLitDef5() throws Exception {
@@ -939,7 +996,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @return {number} */ x.a = 12;\n",
         "assignment to property a of x\n" +
         "found   : number\n" +
-        "required: function (): number");
+        "required: function(): number");
   }
 
   public void testObjLitDef6() throws Exception {
@@ -1120,8 +1177,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "required: string");
   }
 
-  public void testNoPersistentTypeInferenceForObjectProperties()
-      throws Exception {
+  public void testNoPersistentTypeInferenceForObjectProperties() throws Exception {
     testTypes("/** @param {Object} o\n@param {string} x */\n" +
         "function s1(o,x) { o.x = x; }\n" +
         "/** @param {Object} o\n@return {string} */\n" +
@@ -1132,8 +1188,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "function g2(o) { return typeof o.x == 'undefined' ? 0 : o.x; }");
   }
 
-  public void testNoPersistentTypeInferenceForFunctionProperties()
-      throws Exception {
+  public void testNoPersistentTypeInferenceForFunctionProperties() throws Exception {
     testTypes("/** @param {Function} o\n@param {string} x */\n" +
         "function s1(o,x) { o.x = x; }\n" +
         "/** @param {Function} o\n@return {string} */\n" +
@@ -1168,8 +1223,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "required: string");
   }
 
-  public void testMismatchingOverridingInferredPropertyBeforeDeclaredProperty1()
-      throws Exception {
+  public void testMismatchingOverridingInferredPropertyBeforeDeclaredProperty1() throws Exception {
     testTypes("/** @constructor */var T = function() { this.x = ''; };\n" +
         "/** @type {number} */ T.prototype.x = 0;",
         "assignment to property x of T\n" +
@@ -1177,8 +1231,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "required: number");
   }
 
-  public void testMismatchingOverridingInferredPropertyBeforeDeclaredProperty2()
-      throws Exception {
+  public void testMismatchingOverridingInferredPropertyBeforeDeclaredProperty2() throws Exception {
     testTypes("/** @constructor */var T = function() { this.x = ''; };\n" +
         "/** @type {number} */ T.prototype.x;",
         "assignment to property x of T\n" +
@@ -1186,8 +1239,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "required: number");
   }
 
-  public void testMismatchingOverridingInferredPropertyBeforeDeclaredProperty3()
-      throws Exception {
+  public void testMismatchingOverridingInferredPropertyBeforeDeclaredProperty3() throws Exception {
     testTypes("/** @type {Object} */ var n = {};\n" +
         "/** @constructor */ n.T = function() { this.x = ''; };\n" +
         "/** @type {number} */ n.T.prototype.x = 0;",
@@ -1196,14 +1248,162 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "required: number");
   }
 
-  public void testMismatchingOverridingInferredPropertyBeforeDeclaredProperty4()
-      throws Exception {
+  public void testMismatchingOverridingInferredPropertyBeforeDeclaredProperty4() throws Exception {
     testTypes("var n = {};\n" +
         "/** @constructor */ n.T = function() { this.x = ''; };\n" +
         "/** @type {number} */ n.T.prototype.x = 0;",
         "assignment to property x of n.T\n" +
         "found   : string\n" +
         "required: number");
+  }
+
+  public void testAbstractMethodInAbstractClass() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract @constructor */ var C = function() {};",
+            "/** @abstract */ C.prototype.foo = function() {};"));
+  }
+
+  public void testAbstractMethodInConcreteClass() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @constructor */ var C = function() {};",
+            "/** @abstract */ C.prototype.foo = function() {};"),
+        "Abstract methods can only appear in abstract classes. Please declare the class as "
+            + "@abstract");
+  }
+
+  public void testAbstractMethodInConcreteClassExtendingAbstractClass() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract @constructor */ var A = function() {};",
+            "/** @constructor @extends {A} */ var B = function() {};",
+            "/** @abstract */ B.prototype.foo = function() {};"),
+        "Abstract methods can only appear in abstract classes. Please declare the class as "
+            + "@abstract");
+  }
+
+  public void testConcreteMethodOverridingAbstractMethod() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract @constructor */ var A = function() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "/** @constructor @extends {A} */ var B = function() {};",
+            "/** @override */ B.prototype.foo = function() {};"));
+  }
+
+  public void testConcreteMethodInAbstractClass1() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract @constructor */ var A = function() {};",
+            "A.prototype.foo = function() {};",
+            "/** @constructor @extends {A} */ var B = function() {};"));
+  }
+
+  public void testConcreteMethodInAbstractClass2() throws Exception {
+    // Currently goog.abstractMethod are not considered abstract, so no warning is given when a
+    // concrete subclass fails to implement it.
+    testTypes(
+        LINE_JOINER.join(
+            CLOSURE_DEFS,
+            "/** @abstract @constructor */ var A = function() {};",
+            "A.prototype.foo = goog.abstractMethod;",
+            "/** @constructor @extends {A} */ var B = function() {};"));
+  }
+
+  public void testAbstractMethodInInterface() throws Exception {
+    // TODO(moz): There's no need to tag methods with @abstract in interfaces, maybe give a warning
+    // on this.
+    testTypes(
+        LINE_JOINER.join(
+            "/** @interface */ var I = function() {};",
+            "/** @abstract */ I.prototype.foo = function() {};"));
+  }
+
+  public void testAbstractMethodNotImplemented1() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract @constructor */ var A = function() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "/** @constructor @extends {A} */ var B = function() {};"),
+        "property foo on abstract class A is not implemented by type B");
+  }
+
+  public void testAbstractMethodNotImplemented2() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract @constructor */ var A = function() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "/** @abstract */ A.prototype.bar = function() {};",
+            "/** @constructor @extends {A} */ var B = function() {};",
+            "/** @override */ B.prototype.foo = function() {};"),
+        "property bar on abstract class A is not implemented by type B");
+  }
+
+  public void testAbstractMethodNotImplemented3() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract @constructor */ var A = function() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "/** @abstract @constructor @extends {A} */ var B = function() {};",
+            "/** @abstract @override */ B.prototype.foo = function() {};",
+            "/** @constructor @extends {B} */ var C = function() {};"),
+        "property foo on abstract class B is not implemented by type C");
+  }
+
+  public void testAbstractMethodNotImplemented4() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract @constructor */ var A = function() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "/** @abstract @constructor @extends {A} */ var B = function() {};",
+            "/** @constructor @extends {B} */ var C = function() {};"),
+        "property foo on abstract class A is not implemented by type C");
+  }
+
+  public void testAbstractMethodNotImplemented5() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @interface */ var I = function() {};",
+            "I.prototype.foo = function() {};",
+            "/** @abstract @constructor @implements {I} */ var A = function() {};",
+            "/** @abstract @override */ A.prototype.foo = function() {};",
+            "/** @constructor @extends {A} */ var B = function() {};"),
+        "property foo on abstract class A is not implemented by type B");
+  }
+
+  public void testAbstractMethodNotImplemented6() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract @constructor */ var A = function() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "/** @constructor @extends {A} */ var B = function() {};",
+            "/** @override @type {number} */ B.prototype.foo;"),
+        "property foo on abstract class A is not implemented by type B");
+  }
+
+  public void testAbstractMethodImplemented1() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract @constructor */ var A = function() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "/** @abstract */ A.prototype.bar = function() {};",
+            "/** @constructor @extends {A} */ var B = function() {};",
+            "/** @override */ B.prototype.foo = function() {};",
+            "/** @override */ B.prototype.bar = function() {};",
+            "/** @constructor @extends {B} */ var C = function() {};"));
+  }
+
+  public void testAbstractMethodImplemented2() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract @constructor */ var A = function() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "/** @abstract */ A.prototype.bar = function() {};",
+            "/** @abstract @constructor @extends {A} */ var B = function() {};",
+            "/** @override */ B.prototype.foo = function() {};",
+            "/** @constructor @extends {B} */ var C = function() {};",
+            "/** @override */ C.prototype.bar = function() {};"));
   }
 
   public void testPropertyUsedBeforeDefinition1() throws Exception {
@@ -1303,7 +1503,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testAdd12() throws Exception {
-    testTypes("/** @return {(number,string)} */ function a() { return 5; }" +
+    testTypes("/** @return {(number|string)} */ function a() { return 5; }" +
         "/** @type {number} */ var b = 5;" +
         "/** @type {boolean} */ var c = a() + b;",
         "initializing variable\n" +
@@ -1313,7 +1513,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testAdd13() throws Exception {
     testTypes("/** @type {number} */ var a = 5;" +
-        "/** @return {(number,string)} */ function b() { return 5; }" +
+        "/** @return {(number|string)} */ function b() { return 5; }" +
         "/** @type {boolean} */ var c = a + b();",
         "initializing variable\n" +
         "found   : (number|string)\n" +
@@ -1321,7 +1521,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testAdd14() throws Exception {
-    testTypes("/** @type {(null,string)} */ var a = unknown;" +
+    testTypes("/** @type {(null|string)} */ var a = unknown;" +
         "/** @type {number} */ var b = 5;" +
         "/** @type {boolean} */ var c = a + b;",
         "initializing variable\n" +
@@ -1331,7 +1531,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testAdd15() throws Exception {
     testTypes("/** @type {number} */ var a = 5;" +
-        "/** @return {(number,string)} */ function b() { return 5; }" +
+        "/** @return {(number|string)} */ function b() { return 5; }" +
         "/** @type {boolean} */ var c = a + b();",
         "initializing variable\n" +
         "found   : (number|string)\n" +
@@ -1339,7 +1539,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testAdd16() throws Exception {
-    testTypes("/** @type {(undefined,string)} */ var a = unknown;" +
+    testTypes("/** @type {(undefined|string)} */ var a = unknown;" +
         "/** @type {number} */ var b = 5;" +
         "/** @type {boolean} */ var c = a + b;",
         "initializing variable\n" +
@@ -1349,7 +1549,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testAdd17() throws Exception {
     testTypes("/** @type {number} */ var a = 5;" +
-        "/** @type {(undefined,string)} */ var b = unknown;" +
+        "/** @type {(undefined|string)} */ var b = unknown;" +
         "/** @type {boolean} */ var c = a + b;",
         "initializing variable\n" +
         "found   : (number|string)\n" +
@@ -1400,7 +1600,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testNumericComparison4() throws Exception {
-    testTypes("/**@param {(number,undefined)} a*/ " +
+    testTypes("/**@param {(number|undefined)} a*/ " +
               "function f(a) {return a < 3;}");
   }
 
@@ -1533,9 +1733,9 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testScoping2() throws Exception {
     testTypes(
-        "/** @type number */ var a;" +
+        "/** @type {number} */ var a;" +
         "function Foo() {" +
-        "  /** @type string */ var a;" +
+        "  /** @type {string} */ var a;" +
         "}");
   }
 
@@ -1565,7 +1765,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testScoping7() throws Exception {
     testTypes("/** @constructor */function A() {" +
-        "  /** @type !A */this.a = null;" +
+        "  /** @type {!A} */this.a = null;" +
         "}",
         "assignment to property a of A\n" +
         "found   : null\n" +
@@ -1575,7 +1775,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testScoping8() throws Exception {
     testTypes("/** @constructor */function A() {}" +
         "/** @constructor */function B() {" +
-        "  /** @type !A */this.a = null;" +
+        "  /** @type {!A} */this.a = null;" +
         "}",
         "assignment to property a of B\n" +
         "found   : null\n" +
@@ -1584,7 +1784,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testScoping9() throws Exception {
     testTypes("/** @constructor */function B() {" +
-        "  /** @type !A */this.a = null;" +
+        "  /** @type {!A} */this.a = null;" +
         "}" +
         "/** @constructor */function A() {}",
         "assignment to property a of B\n" +
@@ -1600,8 +1800,69 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     assertFalse(p.scope.isDeclared("b", false));
 
     // checking that a has the correct assigned type
-    assertEquals("function (): undefined",
+    assertEquals("function(): undefined",
         p.scope.getVar("a").getType().toString());
+  }
+
+  public void testDontDropPropertiesInUnion1() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/** @param {{a: number}|{a:number, b:string}} x */",
+        "function f(x) {",
+        "  var /** null */ n = x.b;",
+        "}"));
+  }
+
+  public void testDontDropPropertiesInUnion2() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/** @param {{a:number, b:string}|{a: number}} x */",
+        "function f(x) {",
+        "  var /** null */ n = x.b;",
+        "}"));
+  }
+
+  public void testDontDropPropertiesInUnion3() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/** @param {{a: number}|{a:number, b:string}} x */",
+        "function f(x) {}",
+        "/** @param {{a: number}} x */",
+        "function g(x) { return x.b; }"));
+  }
+
+  public void testDontDropPropertiesInUnion4() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/** @param {{a: number}|{a:number, b:string}} x */",
+        "function f(x) {}",
+        "/** @param {{c: number}} x */",
+        "function g(x) { return x.b; }"),
+        "Property b never defined on x");
+  }
+
+  public void testDontDropPropertiesInUnion5() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/** @param {{a: number}|{a: number, b: string}} x */",
+        "function f(x) {}",
+        "f({a: 123});"));
+  }
+
+  public void testDontDropPropertiesInUnion6() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/** @param {{a: number}|{a: number, b: string}} x */",
+        "function f(x) {",
+        "  var /** null */ n = x;",
+        "}"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : {a: number}",
+            "required: null"));
+  }
+
+  public void testDontDropPropertiesInUnion7() throws Exception {
+    // Missed warning because in the registry we map {a, c} to {b, d}
+    testTypes(LINE_JOINER.join(
+        "/** @param {{a: number}|{a:number, b:string}} x */",
+        "function f(x) {}",
+        "/** @param {{c: number}|{c:number, d:string}} x */",
+        "function g(x) { return x.b; }"));
   }
 
   public void testScoping11() throws Exception {
@@ -1610,7 +1871,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testTypes(
         "/** @return {number} */var a = function b(){ return b };",
         "inconsistent return type\n" +
-        "found   : function (): number\n" +
+        "found   : function(): number\n" +
         "required: number");
   }
 
@@ -1633,28 +1894,28 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testFunctionType(
         "/** @param {number} a\n@return {string} */" +
         "function f(a) {}",
-        "function (number): string");
+        "function(number): string");
   }
 
   public void testFunctionArguments2() throws Exception {
     testFunctionType(
         "/** @param {number} opt_a\n@return {string} */" +
         "function f(opt_a) {}",
-        "function (number=): string");
+        "function(number=): string");
   }
 
   public void testFunctionArguments3() throws Exception {
     testFunctionType(
         "/** @param {number} b\n@return {string} */" +
         "function f(a,b) {}",
-        "function (?, number): string");
+        "function(?, number): string");
   }
 
   public void testFunctionArguments4() throws Exception {
     testFunctionType(
         "/** @param {number} opt_a\n@return {string} */" +
         "function f(a,opt_a) {}",
-        "function (?, number=): string");
+        "function(?, number=): string");
   }
 
   public void testFunctionArguments5() throws Exception {
@@ -1702,7 +1963,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testFunctionArguments12() throws Exception {
-    testTypes("/** @param foo {String} */function bar(baz){}",
+    testTypes("/** @param {String} foo  */function bar(baz){}",
         "parameter foo does not appear in bar's parameter list");
   }
 
@@ -1746,16 +2007,12 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testFunctionArguments17() throws Exception {
-    testClosureTypesMultipleWarnings(
+    testTypes(
         "/** @param {booool|string} x */" +
         "function f(x) { g(x) }" +
         "/** @param {number} x */" +
         "function g(x) {}",
-        ImmutableList.of(
-            "Bad type annotation. Unknown type booool",
-            "actual parameter 1 of g does not match formal parameter\n" +
-            "found   : (booool|null|string)\n" +
-            "required: number"));
+        "Bad type annotation. Unknown type booool");
   }
 
   public void testFunctionArguments18() throws Exception {
@@ -1788,62 +2045,61 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testFunctionInference1() throws Exception {
     testFunctionType(
         "function f(a) {}",
-        "function (?): undefined");
+        "function(?): undefined");
   }
 
   public void testFunctionInference2() throws Exception {
     testFunctionType(
         "function f(a,b) {}",
-        "function (?, ?): undefined");
+        "function(?, ?): undefined");
   }
 
   public void testFunctionInference3() throws Exception {
     testFunctionType(
         "function f(var_args) {}",
-        "function (...?): undefined");
+        "function(...?): undefined");
   }
 
   public void testFunctionInference4() throws Exception {
     testFunctionType(
         "function f(a,b,c,var_args) {}",
-        "function (?, ?, ?, ...?): undefined");
+        "function(?, ?, ?, ...?): undefined");
   }
 
   public void testFunctionInference5() throws Exception {
     testFunctionType(
-        "/** @this Date\n@return {string} */function f(a) {}",
-        "function (this:Date, ?): string");
+        "/** @this {Date}\n@return {string} */function f(a) {}", "function(this:Date, ?): string");
   }
 
   public void testFunctionInference6() throws Exception {
     testFunctionType(
-        "/** @this Date\n@return {string} */function f(opt_a) {}",
-        "function (this:Date, ?=): string");
+        "/** @this {Date}\n@return {string} */function f(opt_a) {}",
+        "function(this:Date, ?=): string");
   }
 
   public void testFunctionInference7() throws Exception {
     testFunctionType(
-        "/** @this Date */function f(a,b,c,var_args) {}",
-        "function (this:Date, ?, ?, ?, ...?): undefined");
+        "/** @this {Date} */function f(a,b,c,var_args) {}",
+        "function(this:Date, ?, ?, ?, ...?): undefined");
   }
 
   public void testFunctionInference8() throws Exception {
     testFunctionType(
         "function f() {}",
-        "function (): undefined");
+        "function(): undefined");
   }
 
   public void testFunctionInference9() throws Exception {
     testFunctionType(
         "var f = function() {};",
-        "function (): undefined");
+        "function(): undefined");
   }
 
   public void testFunctionInference10() throws Exception {
     testFunctionType(
-        "/** @this Date\n@param {boolean} b\n@return {string} */" +
+        "/** @this {Date}\n@param {boolean} b\n@return {string} */" +
         "var f = function(a,b) {};",
-        "function (this:Date, ?, boolean): string");
+        "function(this:Date, ?, boolean): string");
   }
 
   public void testFunctionInference11() throws Exception {
@@ -1851,7 +2107,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "var goog = {};" +
         "/** @return {number}*/goog.f = function(){};",
         "goog.f",
-        "function (): number");
+        "function(): number");
   }
 
   public void testFunctionInference12() throws Exception {
@@ -1859,7 +2115,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "var goog = {};" +
         "goog.f = function(){};",
         "goog.f",
-        "function (): undefined");
+        "function(): undefined");
   }
 
   public void testFunctionInference13() throws Exception {
@@ -1868,7 +2124,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @constructor */ goog.Foo = function(){};" +
         "/** @param {!goog.Foo} f */function eatFoo(f){};",
         "eatFoo",
-        "function (goog.Foo): undefined");
+        "function(goog.Foo): undefined");
   }
 
   public void testFunctionInference14() throws Exception {
@@ -1877,7 +2133,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @constructor */ goog.Foo = function(){};" +
         "/** @return {!goog.Foo} */function eatFoo(){ return new goog.Foo; };",
         "eatFoo",
-        "function (): goog.Foo");
+        "function(): goog.Foo");
   }
 
   public void testFunctionInference15() throws Exception {
@@ -1885,7 +2141,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @constructor */ function f() {};" +
         "f.prototype.foo = function(){};",
         "f.prototype.foo",
-        "function (this:f): undefined");
+        "function(this:f): undefined");
   }
 
   public void testFunctionInference16() throws Exception {
@@ -1893,7 +2149,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @constructor */ function f() {};" +
         "f.prototype.foo = function(){};",
         "(new f).foo",
-        "function (this:f): undefined");
+        "function(this:f): undefined");
   }
 
   public void testFunctionInference17() throws Exception {
@@ -1902,7 +2158,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "function abstractMethod() {}" +
         "/** @param {number} x */ f.prototype.foo = abstractMethod;",
         "(new f).foo",
-        "function (this:f, number): ?");
+        "function(this:f, number): ?");
   }
 
   public void testFunctionInference18() throws Exception {
@@ -1910,31 +2166,34 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "var goog = {};" +
         "/** @this {Date} */ goog.eatWithDate;",
         "goog.eatWithDate",
-        "function (this:Date): ?");
+        "function(this:Date): ?");
   }
 
   public void testFunctionInference19() throws Exception {
     testFunctionType(
         "/** @param {string} x */ var f;",
         "f",
-        "function (string): ?");
+        "function(string): ?");
   }
 
   public void testFunctionInference20() throws Exception {
     testFunctionType(
         "/** @this {Date} */ var f;",
         "f",
-        "function (this:Date): ?");
+        "function(this:Date): ?");
   }
 
-  public void testFunctionInference21() throws Exception {
+  public void testFunctionInference21a() throws Exception {
     testTypes(
         "var f = function() { throw 'x' };" +
         "/** @return {boolean} */ var g = f;");
+  }
+
+  public void testFunctionInference21b() throws Exception {
     testFunctionType(
         "var f = function() { throw 'x' };",
         "f",
-        "function (): ?");
+        "function(): ?");
   }
 
   public void testFunctionInference22() throws Exception {
@@ -2253,8 +2512,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @override */ G.prototype.foo = function(x, y) { };",
         "mismatch of the foo property type and the type of the property " +
         "it overrides from superclass F\n" +
-        "original: function (this:F): undefined\n" +
-        "override: function (this:G, ?, ?): undefined");
+        "original: function(this:F): undefined\n" +
+        "override: function(this:G, ?, ?): undefined");
   }
 
   public void testMethodInference8() throws Exception {
@@ -2521,8 +2780,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** jsdoc \n * @return {string} * \n @suppress {duplicate} */ " +
         "F.prototype.bar = function() { return ''; };",
         "assignment to property bar of F.prototype\n" +
-        "found   : function (this:F): string\n" +
-        "required: function (this:F): number");
+        "found   : function(this:F): string\n" +
+        "required: function(this:F): number");
   }
 
   public void testStubFunctionDeclaration1() throws Exception {
@@ -2531,7 +2790,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @param {number} x \n * @param {string} y \n" +
         "  * @return {number} */ f.prototype.foo;",
         "(new f).foo",
-        "function (this:f, number, string): number");
+        "function(this:f, number, string): number");
   }
 
   public void testStubFunctionDeclaration2() throws Exception {
@@ -2540,7 +2799,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @constructor */ function f() {};" +
         "/** @constructor \n * @extends {f} */ f.subclass;",
         "f.subclass",
-        "function (new:f.subclass): ?");
+        "function(new:f.subclass): ?");
   }
 
   public void testStubFunctionDeclaration3() throws Exception {
@@ -2548,7 +2807,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @constructor */ function f() {};" +
         "/** @return {undefined} */ f.foo;",
         "f.foo",
-        "function (): undefined");
+        "function(): undefined");
   }
 
   public void testStubFunctionDeclaration4() throws Exception {
@@ -2557,7 +2816,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "  /** @return {number} */ this.foo;" +
         "}",
         "(new f).foo",
-        "function (this:f): number");
+        "function(this:f): number");
   }
 
   public void testStubFunctionDeclaration5() throws Exception {
@@ -2596,14 +2855,14 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testFunctionType(
         "/** @type {function():number} */ var f; ",
         "f",
-        "function (): number");
+        "function(): number");
   }
 
   public void testStubFunctionDeclaration10() throws Exception {
     testFunctionType(
         "/** @type {function(number):number} */ var f = function(x) {};",
         "f",
-        "function (number): number");
+        "function(number): number");
   }
 
   public void testNestedFunctionInference1() throws Exception {
@@ -2611,15 +2870,14 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @constructor */ function f() {};" +
         "f.prototype.foo = f.prototype.bar = function(){};";
     testFunctionType(nestedAssignOfFooAndBar, "(new f).bar",
-        "function (this:f): undefined");
+        "function(this:f): undefined");
   }
 
   /**
    * Tests the type of a function definition. The function defined by
    * {@code functionDef} should be named {@code "f"}.
    */
-  private void testFunctionType(String functionDef, String functionType)
-      throws Exception {
+  private void testFunctionType(String functionDef, String functionType) {
     testFunctionType(functionDef, "f", functionType);
   }
 
@@ -2628,11 +2886,11 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
    * {@code functionDef} should be named {@code functionName}.
    */
   private void testFunctionType(String functionDef, String functionName,
-      String functionType) throws Exception {
+      String functionType) {
     // using the variable initialization check to verify the function's type
     testTypes(
         functionDef +
-        "/** @type number */var a=" + functionName + ";",
+        "/** @type {number} */var a=" + functionName + ";",
         "initializing variable\n" +
         "found   : " + functionType + "\n" +
         "required: number");
@@ -2644,10 +2902,10 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
    * named {@code functionName}.
    */
   private void testExternFunctionType(String functionDef, String functionName,
-      String functionType) throws Exception {
+      String functionType) {
     testTypes(
         functionDef,
-        "/** @type number */var a=" + functionName + ";",
+        "/** @type {number} */var a=" + functionName + ";",
         "initializing variable\n" +
         "found   : " + functionType + "\n" +
         "required: number", false);
@@ -2657,10 +2915,10 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testClosureTypesMultipleWarnings("a={};/**@enum {string}*/ a.A = {ZOR:'b'};"
         + "/** @constructor */ a.A = function() {}",
         ImmutableList.of(
-            "variable a.A redefined with type function (new:a.A): undefined, " +
+            "variable a.A redefined with type function(new:a.A): undefined, " +
             "original definition at [testcode]:1 with type enum{a.A}",
             "assignment to property A of a\n" +
-            "found   : function (new:a.A): undefined\n" +
+            "found   : function(new:a.A): undefined\n" +
             "required: enum{a.A}"));
   }
 
@@ -2679,7 +2937,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testIn4() throws Exception {
     testTypes("Date in Object",
         "left side of 'in'\n" +
-        "found   : function (new:Date, ?=, ?=, ?=, ?=, ?=, ?=, ?=): string\n" +
+        "found   : function(new:Date, ?=, ?=, ?=, ?=, ?=, ?=, ?=): string\n" +
         "required: string");
   }
 
@@ -2793,8 +3051,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 //   }
 
   public void testComparison2() throws Exception {
-    testTypes("/**@type number*/var a;" +
-        "/**@type !Date */var b;" +
+    testTypes("/**@type {number}*/var a;" +
+        "/**@type {!Date} */var b;" +
         "if (a!==b) {}",
         "condition always evaluates to true\n" +
         "left : number\n" +
@@ -2803,19 +3061,19 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testComparison3() throws Exception {
     // Since null == undefined in JavaScript, this code is reasonable.
-    testTypes("/** @type {(Object,undefined)} */var a;" +
+    testTypes("/** @type {(Object|undefined)} */var a;" +
         "var b = a == null");
   }
 
   public void testComparison4() throws Exception {
-    testTypes("/** @type {(!Object,undefined)} */var a;" +
+    testTypes("/** @type {(!Object|undefined)} */var a;" +
         "/** @type {!Object} */var b;" +
         "var c = a == b");
   }
 
   public void testComparison5() throws Exception {
-    testTypes("/** @type null */var a;" +
-        "/** @type null */var b;" +
+    testTypes("/** @type {null} */var a;" +
+        "/** @type {null} */var b;" +
         "a == b",
         "condition always evaluates to true\n" +
         "left : null\n" +
@@ -2823,8 +3081,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testComparison6() throws Exception {
-    testTypes("/** @type null */var a;" +
-        "/** @type null */var b;" +
+    testTypes("/** @type {null} */var a;" +
+        "/** @type {null} */var b;" +
         "a != b",
         "condition always evaluates to false\n" +
         "left : null\n" +
@@ -2862,7 +3120,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testTypes(
         "(function(){}) == 'x'",
         "condition always evaluates to false\n" +
-        "left : function (): undefined\n" +
+        "left : function(): undefined\n" +
         "right: string");
   }
 
@@ -2870,7 +3128,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testTypes(
         "(function(){}) == 3",
         "condition always evaluates to false\n" +
-        "left : function (): undefined\n" +
+        "left : function(): undefined\n" +
         "right: number");
   }
 
@@ -2878,7 +3136,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testTypes(
         "(function(){}) == false",
         "condition always evaluates to false\n" +
-        "left : function (): undefined\n" +
+        "left : function(): undefined\n" +
         "right: boolean");
   }
 
@@ -2961,11 +3219,6 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/**@type {a}*/var d;d=a.BB;");
   }
 
-  public void testEnum2() throws Exception {
-    testTypes("/**@enum*/var a={b:1}",
-        "enum key b must be in ALL_CAPS");
-  }
-
   public void testEnum3() throws Exception {
     testTypes("/**@enum*/var a={BB:1,BB:2}",
         "variable a.BB redefined, original definition at [testcode]:1");
@@ -2979,7 +3232,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testEnum5() throws Exception {
-    testTypes("/**@enum {String}*/var a={BB:'string'}",
+    testTypes("/**@enum {?String}*/var a={BB:'string'}",
         "assignment to property BB of enum{a}\n" +
         "found   : string\n" +
         "required: (String|null)");
@@ -2994,7 +3247,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testEnum7() throws Exception {
     testTypes("/** @enum */var a={AA:1,BB:2,CC:3};" +
-        "/** @type a */var b=a.D;",
+        "/** @type {a} */var b=a.D;",
         "element D does not exist on this enum");
   }
 
@@ -3117,7 +3370,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testEnum24() throws Exception {
-    testTypes("/**@enum {Object} */ var E = {A: {}};" +
+    testTypes("/**@enum {?Object} */ var E = {A: {}};" +
         "/** @param {E} x \n* @return {!Object} */ function f(x) {return x}",
         "inconsistent return type\n" +
         "found   : E<(Object|null)>\n" +
@@ -3462,20 +3715,10 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @extends {base}\n * @constructor */function derived() {}\n" +
         "goog.inherits(derived, base);",
         "derived.superClass_.foo",
-        "function (this:base): number");
+        "function(this:base): number");
   }
 
   public void testGoodExtends7() throws Exception {
-    testFunctionType(
-        "Function.prototype.inherits = function(x) {};" +
-        "/** @constructor */function base() {}\n" +
-        "/** @extends {base}\n * @constructor */function derived() {}\n" +
-        "derived.inherits(base);",
-        "(new derived).constructor",
-        "function (new:derived, ...?): ?");
-  }
-
-  public void testGoodExtends8() throws Exception {
     testTypes("/** @constructor \n @extends {Base} */ function Sub() {}" +
         "/** @return {number} */ function f() { return (new Sub()).foo; }" +
         "/** @constructor */ function Base() {}" +
@@ -3485,7 +3728,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "required: number");
   }
 
-  public void testGoodExtends9() throws Exception {
+  public void testGoodExtends8() throws Exception {
     testTypes(
         "/** @constructor */ function Super() {}" +
         "Super.prototype.foo = function() {};" +
@@ -3494,7 +3737,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @override */ Sub.prototype.foo = function() {};");
   }
 
-  public void testGoodExtends10() throws Exception {
+  public void testGoodExtends9() throws Exception {
     testTypes(
         "/** @constructor */ function Super() {}" +
         "/** @constructor \n * @extends {Super} */ function Sub() {}" +
@@ -3502,7 +3745,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @return {Super} */ function foo() { return new Sub(); }");
   }
 
-  public void testGoodExtends11() throws Exception {
+  public void testGoodExtends10() throws Exception {
     testTypes(
         "/** @constructor */ function Super() {}" +
         "/** @param {boolean} x */ Super.prototype.foo = function(x) {};" +
@@ -3515,7 +3758,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "required: boolean");
   }
 
-  public void testGoodExtends12() throws Exception {
+  public void testGoodExtends11() throws Exception {
     testTypes(
         "/** @constructor \n * @extends {Super} */ function Sub() {}" +
         "/** @constructor \n * @extends {Sub} */ function Sub2() {}" +
@@ -3524,7 +3767,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "foo(new Sub2());");
   }
 
-  public void testGoodExtends13() throws Exception {
+  public void testGoodExtends12() throws Exception {
     testTypes(
         "/** @constructor \n * @extends {B}  */ function C() {}" +
         "/** @constructor \n * @extends {D}  */ function E() {}" +
@@ -3537,7 +3780,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "required: number");
   }
 
-  public void testGoodExtends14() throws Exception {
+  public void testGoodExtends13() throws Exception {
     testTypes(
         CLOSURE_DEFS +
         "/** @param {Function} f */ function g(f) {" +
@@ -3547,7 +3790,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "}");
   }
 
-  public void testGoodExtends15() throws Exception {
+  public void testGoodExtends14() throws Exception {
     testTypes(
         CLOSURE_DEFS +
         "/** @constructor */ function OldType() {}" +
@@ -3565,7 +3808,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "Property foo never defined on OldType.prototype");
   }
 
-  public void testGoodExtends16() throws Exception {
+  public void testGoodExtends15() throws Exception {
     testTypes(
         CLOSURE_DEFS +
         "/** @param {Function} f */ function g(f) {" +
@@ -3575,18 +3818,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "}");
   }
 
-  public void testGoodExtends17() throws Exception {
-    testFunctionType(
-        "Function.prototype.inherits = function(x) {};" +
-        "/** @constructor */function base() {}\n" +
-        "/** @param {number} x */ base.prototype.bar = function(x) {};\n" +
-        "/** @extends {base}\n * @constructor */function derived() {}\n" +
-        "derived.inherits(base);",
-        "(new derived).constructor.prototype.bar",
-        "function (this:base, number): undefined");
-  }
-
-  public void testGoodExtends18() throws Exception {
+  public void testGoodExtends16() throws Exception {
     testTypes(
         CLOSURE_DEFS +
         "/** @constructor\n" +
@@ -3599,7 +3831,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "(new D())");
   }
 
-  public void testGoodExtends19() throws Exception {
+  public void testGoodExtends17() throws Exception {
     testTypes(
         CLOSURE_DEFS +
         "/** @constructor */\n" +
@@ -3628,7 +3860,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "required: string");
   }
 
-  public void testGoodExtends20() throws Exception {
+  public void testGoodExtends18() throws Exception {
     testTypes(""
         + "/** @interface */\n"
         + "var MyInterface = function() {};\n"
@@ -3644,7 +3876,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         + "}");
   }
 
-  public void testGoodExtends21() throws Exception {
+  public void testGoodExtends19() throws Exception {
     testTypes(""
         + "/** @constructor */\n"
         + "var MyType = function() {};\n"
@@ -3718,8 +3950,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         ""
         + "mismatch of the method property type and the type of the property "
         + "it overrides from superclass MyInterface\n"
-        + "original: function (this:MyInterface): number\n"
-        + "override: function (this:MyOtherInterface): string");
+        + "original: function(this:MyInterface): number\n"
+        + "override: function(this:MyOtherInterface): string");
   }
 
 
@@ -3743,8 +3975,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         ""
         + "mismatch of the method property type and the type of the property "
         + "it overrides from superclass MyType\n"
-        + "original: function (this:MyType): number\n"
-        + "override: function (this:MyOtherType): string");
+        + "original: function(this:MyType): number\n"
+        + "override: function(this:MyOtherType): string");
   }
 
   public void testLateExtends() throws Exception {
@@ -3776,24 +4008,6 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "Bar.mixin(Baz);\n");
   }
 
-  public void testSuperclassMismatch1() throws Exception {
-    compiler.getOptions().setCodingConvention(new GoogleCodingConvention());
-    testTypes("/** @constructor */ var Foo = function() {};\n" +
-        "/** @constructor \n @extends Object */ var Bar = function() {};\n" +
-        "Bar.inherits = function(x){};" +
-        "Bar.inherits(Foo);\n",
-        "Missing @extends tag on type Bar");
-  }
-
-  public void testSuperclassMismatch2() throws Exception {
-    compiler.getOptions().setCodingConvention(new GoogleCodingConvention());
-    testTypes("/** @constructor */ var Foo = function(){};\n" +
-        "/** @constructor */ var Bar = function(){};\n" +
-        "Bar.inherits = function(x){};" +
-        "Bar.inherits(Foo);",
-        "Missing @extends tag on type Bar");
-  }
-
   public void testSuperClassDefinedAfterSubClass1() throws Exception {
     testTypes(
         "/** @constructor \n * @extends {Base} */ function A() {}" +
@@ -3810,6 +4024,62 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @param {A|B} x \n * @return {B|A} */ " +
         "function foo(x) { return x; }" +
         "/** @constructor */ function Base() {}");
+  }
+
+  // https://github.com/google/closure-compiler/issues/2458
+  public void testAbstractSpread() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract */",
+            "class X {",
+            "  /** @abstract */",
+            "  m1() {}",
+            "",
+            "  m2() {",
+            "    return () => this.m1(...[]);",
+            "  }",
+            "}"));
+  }
+
+  public void testGoodSuperCall() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "class A {",
+            "  /**",
+            "   * @param {string} a",
+            "   */",
+            "  constructor(a) {",
+            "    this.a = a;",
+            "  }",
+            "}",
+            "class B extends A {",
+            "  constructor() {",
+            "    super('b');",
+            "  }",
+            "}",
+            ""));
+  }
+
+  public void testBadSuperCall() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "class A {",
+            "  /**",
+            "   * @param {string} a",
+            "   */",
+            "  constructor(a) {",
+            "    this.a = a;",
+            "  }",
+            "}",
+            "class B extends A {",
+            "  constructor() {",
+            "    super(5);",
+            "  }",
+            "}"),
+        LINE_JOINER.join(
+            "actual parameter 1 of super does not match formal parameter",
+            "found   : number",
+            "required: string"));
   }
 
   public void testDirectPrototypeAssignment1() throws Exception {
@@ -3972,7 +4242,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testTypes("/** @interface */function Disposable() {}\n" +
         "/** @type {number} */ Disposable.prototype.bar = function() {};",
         "assignment to property bar of Disposable.prototype\n" +
-        "found   : function (): undefined\n" +
+        "found   : function(): undefined\n" +
         "required: number");
   }
 
@@ -3983,7 +4253,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         ImmutableList.of(
             "assignment to property bar of Disposable.prototype\n" +
             "found   : number\n" +
-            "required: function (): ?",
+            "required: function(): ?",
             "interface members can only be empty property declarations, " +
             "empty functions, or goog.abstractMethod"));
   }
@@ -4003,10 +4273,10 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         + "  method: function() { return ''; }\n"
         + "}",
         ""
-        + "mismatch of the method property type and the type of the property "
+        + "mismatch of the method property on type MyClass and the type of the property "
         + "it overrides from interface MyInterface\n"
-        + "original: function (): number\n"
-        + "override: function (): string");
+        + "original: function(): number\n"
+        + "override: function(): string");
   }
 
   public void testBadImplements8() throws Exception {
@@ -4053,6 +4323,22 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @constructor\n" +
         " * @implements {B}\n" +
         " */ function derived() {}");
+  }
+
+  public void testDontCrashOnDupPropDefinition() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/** @const */",
+        "var ns = {};",
+        "/** @interface */",
+        "ns.I = function() {};",
+        "/** @interface */",
+        "ns.A = function() {};",
+        "/**",
+        " * @constructor",
+        " * @implements {ns.I}",
+        " */",
+        "ns.A = function() {};"),
+        "variable ns.A redefined, original definition at [testcode]:6");
   }
 
   public void testBadInterfaceExtends1() throws Exception {
@@ -4319,8 +4605,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
               " */\n" +
               "function Foo() {}\n" +
               "(new Foo()).x = 123;",
-              "Cannot add a property to a struct instance " +
-              "after it is constructed.");
+              ILLEGAL_PROPERTY_CREATION_MESSAGE);
   }
 
   public void testSetprop3() throws Exception {
@@ -4331,8 +4616,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
               " */\n" +
               "function Foo() {}\n" +
               "(function() { (new Foo()).x = 123; })();",
-              "Cannot add a property to a struct instance " +
-              "after it is constructed.");
+              ILLEGAL_PROPERTY_CREATION_MESSAGE);
   }
 
   public void testSetprop4() throws Exception {
@@ -4353,8 +4637,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
               " */\n" +
               "function Foo() {}\n" +
               "(true ? new Foo() : {}).x = 123;",
-              "Cannot add a property to a struct instance " +
-              "after it is constructed.");
+              ILLEGAL_PROPERTY_CREATION_MESSAGE);
   }
 
   public void testSetprop6() throws Exception {
@@ -4369,8 +4652,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
               " * @param{Foo} f\n" +
               " */\n" +
               "function Bar(f) { f.x = 123; }",
-              "Cannot add a property to a struct instance " +
-              "after it is constructed.");
+             ILLEGAL_PROPERTY_CREATION_MESSAGE);
   }
 
   public void testSetprop7() throws Exception {
@@ -4383,8 +4665,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
               "  var t = this;\n" +
               "  t.x = 123;\n" +
               "}",
-              "Cannot add a property to a struct instance " +
-              "after it is constructed.");
+              ILLEGAL_PROPERTY_CREATION_MESSAGE);
   }
 
   public void testSetprop8() throws Exception {
@@ -4396,8 +4677,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
               "function Foo() {}\n" +
               "(new Foo()).x--;",
               new String[] {
-                "Cannot add a property to a struct instance " +
-                "after it is constructed.",
+                ILLEGAL_PROPERTY_CREATION_MESSAGE,
                 "Property x never defined on Foo"
               });
   }
@@ -4411,8 +4691,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
               "function Foo() {}\n" +
               "(new Foo()).x += 123;",
               new String[] {
-                "Cannot add a property to a struct instance " +
-                "after it is constructed.",
+                ILLEGAL_PROPERTY_CREATION_MESSAGE,
                 "Property x never defined on Foo"
               });
   }
@@ -4698,6 +4977,25 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
               "Cannot do '[]' access on a struct");
   }
 
+  public void testGetelemStruct_noErrorForSettingWellKnownSymbol() throws Exception {
+    testTypes("/**\n" +
+              " * @constructor\n" +
+              " * @struct\n" +
+              " */\n" +
+              "function Foo() {}\n" +
+              "Foo.prototype[Symbol.iterator] = 123;\n");
+  }
+
+  public void testGetelemStruct_noErrorForGettingWellKnownSymbol() throws Exception {
+    testTypes("/**\n" +
+              " * @constructor\n" +
+              " * @struct\n" +
+              " */\n" +
+              "function Foo() {}\n" +
+              "/** @param {!Foo} foo */\n" +
+              "function getIterator(foo) { return foo[Symbol.iterator](); }\n");
+  }
+
   public void testInOnStruct() throws Exception {
     testTypes("/**\n" +
               " * @constructor\n" +
@@ -4718,13 +5016,60 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
               "Cannot use the IN operator with structs");
   }
 
+  public void testArrayLegacyAccess1() throws Exception {
+    String externs = DEFAULT_EXTERNS.replace(
+        " * @implements {IArrayLike<T>}",
+        LINE_JOINER.join(
+          " * @implements {IObject<?, T>} ",
+          " * @implements {IArrayLike<T>} "));
+    checkState(DEFAULT_EXTERNS.length() != externs.length());
+    testTypesWithExterns(externs, "var a = []; var b = a['hi'];");
+  }
+
+  public void testIArrayLikeAccess1() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** ",
+            " * @param {!IArrayLike<T>} x",
+            " * @return {T}",
+            " * @template T",
+            "*/",
+            "function f(x) { return x[0]; }",
+            "function g(/** !Array<string> */ x) {",
+            "  var /** null */ y = f(x);",
+            "}"),
+        "initializing variable\n"
+        + "found   : string\n"
+        + "required: null");
+  }
+
+  public void testIArrayLikeAccess2() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** ",
+            " * @param {!IArrayLike<T>} x",
+            " * @return {T}",
+            " * @template T",
+            "*/",
+            "function f(x) { return x[0]; }",
+            "function g(/** !IArrayLike<string> */ x) {",
+            "  var /** null */ y = f(x);",
+            "}"),
+        "initializing variable\n"
+        + "found   : string\n"
+        + "required: null");
+  }
+
   public void testArrayAccess1() throws Exception {
-    testTypes("var a = []; var b = a['hi'];");
+    testTypes("var a = []; var b = a['hi'];",
+        "restricted index type\n" +
+        "found   : string\n" +
+        "required: number");
   }
 
   public void testArrayAccess2() throws Exception {
     testTypes("var a = []; var b = a[[1,2]];",
-        "array access\n" +
+        "restricted index type\n" +
         "found   : Array\n" +
         "required: number");
   }
@@ -4733,14 +5078,14 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testTypes("var bar = [];" +
         "/** @return {void} */function baz(){};" +
         "var foo = bar[baz()];",
-        "array access\n" +
+        "restricted index type\n" +
         "found   : undefined\n" +
         "required: number");
   }
 
   public void testArrayAccess4() throws Exception {
     testTypes("/**@return {!Array}*/function foo(){};var bar = foo()[foo()];",
-        "array access\n" +
+        "restricted index type\n" +
         "found   : Array\n" +
         "required: number");
   }
@@ -4771,7 +5116,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testArrayAccess9() throws Exception {
     testTypes("/** @return {?Array} */ function f() { return []; }" +
         "f()[{}]",
-        "array access\n" +
+        "restricted index type\n" +
         "found   : {}\n" +
         "required: number");
   }
@@ -4805,12 +5150,9 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testSwitchCase1() throws Exception {
-    testTypes("/**@type number*/var a;" +
-        "/**@type string*/var b;" +
-        "switch(a){case b:;}",
-        "case expression doesn't match switch\n" +
-        "found   : string\n" +
-        "required: number");
+    testTypes(
+        "/**@type {number}*/var a;" + "/**@type {string}*/var b;" + "switch(a){case b:;}",
+        "case expression doesn't match switch\n" + "found   : string\n" + "required: number");
   }
 
   public void testSwitchCase2() throws Exception {
@@ -4819,7 +5161,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testVar1() throws Exception {
     TypeCheckResult p =
-        parseAndTypeCheckWithScope("/** @type {(string,null)} */var a = null");
+        parseAndTypeCheckWithScope("/** @type {(string|null)} */var a = null");
 
     assertTypeEquals(createUnionType(STRING_TYPE, NULL_TYPE),
         p.scope.getVar("a").getType());
@@ -4845,8 +5187,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testVar5() throws Exception {
     testTypes("var goog = {};" +
-        "/** @type string */goog.foo = 'hello';" +
-        "/** @type number */var a = goog.foo;",
+        "/** @type {string} */goog.foo = 'hello';" +
+        "/** @type {number} */var a = goog.foo;",
         "initializing variable\n" +
         "found   : string\n" +
         "required: number");
@@ -4866,7 +5208,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testVar7() throws Exception {
-    testTypes("/** @type number */var a, b;",
+    testTypes("/** @type {number} */var a, b;",
         "declaration of multiple variables with shared type information");
   }
 
@@ -4880,22 +5222,22 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testVar10() throws Exception {
-    testTypes("/** @type !Number */var foo = 'abc';",
+    testTypes("/** @type {!Number} */var foo = 'abc';",
         "initializing variable\n" +
         "found   : string\n" +
         "required: Number");
   }
 
   public void testVar11() throws Exception {
-    testTypes("var /** @type !Date */foo = 'abc';",
+    testTypes("var /** @type {!Date} */foo = 'abc';",
         "initializing variable\n" +
         "found   : string\n" +
         "required: Date");
   }
 
   public void testVar12() throws Exception {
-    testTypes("var /** @type !Date */foo = 'abc', " +
-        "/** @type !RegExp */bar = 5;",
+    testTypes("var /** @type {!Date} */foo = 'abc', " +
+        "/** @type {!RegExp} */bar = 5;",
         new String[] {
         "initializing variable\n" +
         "found   : string\n" +
@@ -4907,7 +5249,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testVar13() throws Exception {
     // this caused an NPE
-    testTypes("var /** @type number */a,a;");
+    testTypes("var /** @type {number} */a,a;");
   }
 
   public void testVar14() throws Exception {
@@ -4927,7 +5269,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testAssign1() throws Exception {
     testTypes("var goog = {};" +
-        "/** @type number */goog.foo = 'hello';",
+        "/** @type {number} */goog.foo = 'hello';",
         "assignment to property foo of goog\n" +
         "found   : string\n" +
         "required: number");
@@ -4935,7 +5277,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testAssign2() throws Exception {
     testTypes("var goog = {};" +
-        "/** @type number */goog.foo = 3;" +
+        "/** @type {number}  */goog.foo = 3;" +
         "goog.foo = 'hello';",
         "assignment to property foo of goog\n" +
         "found   : string\n" +
@@ -4944,7 +5286,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testAssign3() throws Exception {
     testTypes("var goog = {};" +
-        "/** @type number */goog.foo = 3;" +
+        "/** @type {number}  */goog.foo = 3;" +
         "goog.foo = 4;");
   }
 
@@ -4968,23 +5310,22 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testOr1() throws Exception {
-    testTypes("/** @type number */var a;" +
-        "/** @type number */var b;" +
+    testTypes("/** @type {number}  */var a;" +
+        "/** @type {number}  */var b;" +
         "a + b || undefined;");
   }
 
   public void testOr2() throws Exception {
-    testTypes("/** @type number */var a;" +
-        "/** @type number */var b;" +
-        "/** @type number */var c = a + b || undefined;",
+    testTypes("/** @type {number}  */var a;" +
+        "/** @type {number}  */var b;" +
+        "/** @type {number}  */var c = a + b || undefined;",
         "initializing variable\n" +
         "found   : (number|undefined)\n" +
         "required: number");
   }
 
   public void testOr3() throws Exception {
-    testTypes("/** @type {(number, undefined)} */var a;" +
-        "/** @type number */var c = a || 3;");
+    testTypes("/** @type {(number|undefined)} */var a;" + "/** @type {number}  */var c = a || 3;");
   }
 
   /**
@@ -5010,32 +5351,30 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testAnd1() throws Exception {
-    testTypes("/** @type number */var a;" +
-        "/** @type number */var b;" +
-        "a + b && undefined;");
+    testTypes(
+        "/** @type {number}  */var a;" + "/** @type {number}  */var b;" + "a + b && undefined;");
   }
 
   public void testAnd2() throws Exception {
-    testTypes("/** @type number */var a;" +
-        "/** @type number */var b;" +
-        "/** @type number */var c = a + b && undefined;",
-        "initializing variable\n" +
-        "found   : (number|undefined)\n" +
-        "required: number");
+    testTypes(
+        "/** @type {number}  */var a;"
+            + "/** @type {number}  */var b;"
+            + "/** @type {number}  */var c = a + b && undefined;",
+        "initializing variable\n" + "found   : (number|undefined)\n" + "required: number");
   }
 
   public void testAnd3() throws Exception {
-    testTypes("/** @type {(!Array, undefined)} */var a;" +
-        "/** @type number */var c = a && undefined;",
-        "initializing variable\n" +
-        "found   : undefined\n" +
-        "required: number");
+    testTypes(
+        "/** @type {(!Array|undefined)} */var a;"
+            + "/** @type {number}  */var c = a && undefined;",
+        "initializing variable\n" + "found   : undefined\n" + "required: number");
   }
 
   public void testAnd4() throws Exception {
-    testTypes("/** @param {number} x */function f(x){};\n" +
-        "/** @type null */var x; /** @type {number?} */var y;\n" +
-        "if (x && y) { f(y) }");
+    testTypes(
+        "/** @param {number} x */function f(x){};\n"
+            + "/** @type {null}  */var x; /** @type {number?} */var y;\n"
+            + "if (x && y) { f(y) }");
   }
 
   public void testAnd5() throws Exception {
@@ -5055,7 +5394,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     // case since x && x is always false. The implementation of this requires
     // a more precise handling of a null value within a variable's type.
     // Currently, a null value defaults to ? which passes every check.
-    testTypes("/** @type null */var x; if (x && x) {}");
+    testTypes("/** @type {null} */var x; if (x && x) {}");
   }
 
   public void testAnd8() throws Exception {
@@ -5092,50 +5431,50 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testHookRestrictsType1() throws Exception {
-    testTypes("/** @return {(string,null)} */" +
+    testTypes("/** @return {(string|null)} */" +
         "function f() { return null;}" +
-        "/** @type {(string,null)} */ var a = f();" +
-        "/** @type string */" +
+        "/** @type {(string|null)} */ var a = f();" +
+        "/** @type {string} */" +
         "var b = a ? a : 'default';");
   }
 
   public void testHookRestrictsType2() throws Exception {
     testTypes("/** @type {String} */" +
         "var a = null;" +
-        "/** @type null */" +
+        "/** @type {null} */" +
         "var b = a ? null : a;");
   }
 
   public void testHookRestrictsType3() throws Exception {
     testTypes("/** @type {String} */" +
         "var a;" +
-        "/** @type null */" +
+        "/** @type {null} */" +
         "var b = (!a) ? a : null;");
   }
 
   public void testHookRestrictsType4() throws Exception {
-    testTypes("/** @type {(boolean,undefined)} */" +
+    testTypes("/** @type {(boolean|undefined)} */" +
         "var a;" +
-        "/** @type boolean */" +
+        "/** @type {boolean} */" +
         "var b = a != null ? a : true;");
   }
 
   public void testHookRestrictsType5() throws Exception {
-    testTypes("/** @type {(boolean,undefined)} */" +
+    testTypes("/** @type {(boolean|undefined)} */" +
         "var a;" +
         "/** @type {(undefined)} */" +
         "var b = a == null ? a : undefined;");
   }
 
   public void testHookRestrictsType6() throws Exception {
-    testTypes("/** @type {(number,null,undefined)} */" +
+    testTypes("/** @type {(number|null|undefined)} */" +
         "var a;" +
         "/** @type {number} */" +
         "var b = a == null ? 5 : a;");
   }
 
   public void testHookRestrictsType7() throws Exception {
-    testTypes("/** @type {(number,null,undefined)} */" +
+    testTypes("/** @type {(number|null|undefined)} */" +
         "var a;" +
         "/** @type {number} */" +
         "var b = a == undefined ? 5 : a;");
@@ -5173,11 +5512,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testHigherOrderFunctions2() throws Exception {
     testTypes(
-        "/** @type {function():!Date} */var f;" +
-        "/** @type boolean */var a = f();",
-        "initializing variable\n" +
-        "found   : Date\n" +
-        "required: boolean");
+        "/** @type {function():!Date} */var f;" + "/** @type {boolean} */var a = f();",
+        "initializing variable\n" + "found   : Date\n" + "required: boolean");
   }
 
   public void testHigherOrderFunctions3() throws Exception {
@@ -5332,55 +5668,55 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testClosure1() throws Exception {
     testClosureTypes(
-        CLOSURE_DEFS +
-        "/** @type {string|undefined} */var a;" +
-        "/** @type string */" +
-        "var b = goog.isDef(a) ? a : 'default';",
+        CLOSURE_DEFS
+            + "/** @type {string|undefined} */var a;"
+            + "/** @type {string} */"
+            + "var b = goog.isDef(a) ? a : 'default';",
         null);
   }
 
   public void testClosure2() throws Exception {
     testClosureTypes(
-        CLOSURE_DEFS +
-        "/** @type {string?} */var a;" +
-        "/** @type string */" +
-        "var b = goog.isNull(a) ? 'default' : a;",
+        CLOSURE_DEFS
+            + "/** @type {string?} */var a;"
+            + "/** @type {string} */"
+            + "var b = goog.isNull(a) ? 'default' : a;",
         null);
   }
 
   public void testClosure3() throws Exception {
     testClosureTypes(
-        CLOSURE_DEFS +
-        "/** @type {string|null|undefined} */var a;" +
-        "/** @type string */" +
-        "var b = goog.isDefAndNotNull(a) ? a : 'default';",
+        CLOSURE_DEFS
+            + "/** @type {string|null|undefined} */var a;"
+            + "/** @type {string} */"
+            + "var b = goog.isDefAndNotNull(a) ? a : 'default';",
         null);
   }
 
   public void testClosure4() throws Exception {
     testClosureTypes(
-        CLOSURE_DEFS +
-        "/** @type {string|undefined} */var a;" +
-        "/** @type string */" +
-        "var b = !goog.isDef(a) ? 'default' : a;",
+        CLOSURE_DEFS
+            + "/** @type {string|undefined} */var a;"
+            + "/** @type {string} */"
+            + "var b = !goog.isDef(a) ? 'default' : a;",
         null);
   }
 
   public void testClosure5() throws Exception {
     testClosureTypes(
-        CLOSURE_DEFS +
-        "/** @type {string?} */var a;" +
-        "/** @type string */" +
-        "var b = !goog.isNull(a) ? a : 'default';",
+        CLOSURE_DEFS
+            + "/** @type {string?} */var a;"
+            + "/** @type {string} */"
+            + "var b = !goog.isNull(a) ? a : 'default';",
         null);
   }
 
   public void testClosure6() throws Exception {
     testClosureTypes(
-        CLOSURE_DEFS +
-        "/** @type {string|null|undefined} */var a;" +
-        "/** @type string */" +
-        "var b = !goog.isDefAndNotNull(a) ? 'default' : a;",
+        CLOSURE_DEFS
+            + "/** @type {string|null|undefined} */var a;"
+            + "/** @type {string} */"
+            + "var b = !goog.isDefAndNotNull(a) ? 'default' : a;",
         null);
   }
 
@@ -5484,8 +5820,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "SubFoo.prototype.bar = function() { return 3; }; ",
         "mismatch of the bar property type and the type of the property " +
         "it overrides from superclass Foo\n" +
-        "original: function (this:Foo): undefined\n" +
-        "override: function (this:SubFoo): number");
+        "original: function(this:Foo): undefined\n" +
+        "override: function(this:SubFoo): number");
   }
 
   public void testInferredReturn4() throws Exception {
@@ -5496,8 +5832,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "var x = function() {};" +
         "x = /** @type {function(): number} */ (function() { return 3; });",
         "assignment\n" +
-        "found   : function (): number\n" +
-        "required: function (): undefined");
+        "found   : function(): number\n" +
+        "required: function(): undefined");
   }
 
   public void testInferredReturn5() throws Exception {
@@ -5540,16 +5876,13 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testInferredReturn8() throws Exception {
-    reportMissingOverrides = CheckLevel.OFF;
     testTypes(
-        "/** @constructor */ function Foo() {}" +
-        "/** @param {number} x */ Foo.prototype.bar = function(x) {};" +
-        "/** @constructor \n * @extends {Foo} */ function SubFoo() {}" +
-        "/** @param {number} x */ SubFoo.prototype.bar = " +
-        "    function(x) { return 3; }",
-        "inconsistent return type\n" +
-        "found   : number\n" +
-        "required: undefined");
+        "/** @constructor */ function Foo() {}"
+            + "/** @param {number} x */ Foo.prototype.bar = function(x) {};"
+            + "/** @constructor \n * @extends {Foo} */ function SubFoo() {}"
+            + "/** @override @param {number} x */ SubFoo.prototype.bar = "
+            + "    function(x) { return 3; }",
+        "inconsistent return type\n" + "found   : number\n" + "required: undefined");
   }
 
   public void testInferredParam1() throws Exception {
@@ -5564,75 +5897,70 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testInferredParam2() throws Exception {
-    reportMissingOverrides = CheckLevel.OFF;
     testTypes(
-        "/** @param {string} x */ function f(x) {}" +
-        "/** @constructor */ function Foo() {}" +
-        "/** @param {number} x */ Foo.prototype.bar = function(x) {};" +
-        "/** @constructor \n * @extends {Foo} */ function SubFoo() {}" +
-        "/** @return {void} */ SubFoo.prototype.bar = " +
-        "    function(x) { f(x); }",
-        "actual parameter 1 of f does not match formal parameter\n" +
-        "found   : number\n" +
-        "required: string");
+        "/** @param {string} x */ function f(x) {}"
+            + "/** @constructor */ function Foo() {}"
+            + "/** @param {number} x */ Foo.prototype.bar = function(x) {};"
+            + "/** @constructor \n * @extends {Foo} */ function SubFoo() {}"
+            + "/** @override @return {void} */ SubFoo.prototype.bar = "
+            + "    function(x) { f(x); }",
+        "actual parameter 1 of f does not match formal parameter\n"
+            + "found   : number\n"
+            + "required: string");
   }
 
   public void testInferredParam3() throws Exception {
-    reportMissingOverrides = CheckLevel.OFF;
     testTypes(
-        "/** @param {string} x */ function f(x) {}" +
-        "/** @constructor */ function Foo() {}" +
-        "/** @param {number=} x */ Foo.prototype.bar = function(x) {};" +
-        "/** @constructor \n * @extends {Foo} */ function SubFoo() {}" +
-        "/** @return {void} */ SubFoo.prototype.bar = " +
-        "    function(x) { f(x); }; (new SubFoo()).bar();",
-        "actual parameter 1 of f does not match formal parameter\n" +
-        "found   : (number|undefined)\n" +
-        "required: string");
+        "/** @param {string} x */ function f(x) {}"
+            + "/** @constructor */ function Foo() {}"
+            + "/** @param {number=} x */ Foo.prototype.bar = function(x) {};"
+            + "/** @constructor \n * @extends {Foo} */ function SubFoo() {}"
+            + "/** @override @return {void} */ SubFoo.prototype.bar = "
+            + "    function(x) { f(x); }; (new SubFoo()).bar();",
+        "actual parameter 1 of f does not match formal parameter\n"
+            + "found   : (number|undefined)\n"
+            + "required: string");
   }
 
   public void testInferredParam4() throws Exception {
-    reportMissingOverrides = CheckLevel.OFF;
     testTypes(
-        "/** @param {string} x */ function f(x) {}" +
-        "/** @constructor */ function Foo() {}" +
-        "/** @param {...number} x */ Foo.prototype.bar = function(x) {};" +
-        "/** @constructor \n * @extends {Foo} */ function SubFoo() {}" +
-        "/** @return {void} */ SubFoo.prototype.bar = " +
-        "    function(x) { f(x); }; (new SubFoo()).bar();",
-        "actual parameter 1 of f does not match formal parameter\n" +
-        "found   : (number|undefined)\n" +
-        "required: string");
+        "/** @param {string} x */ function f(x) {}"
+            + "/** @constructor */ function Foo() {}"
+            + "/** @param {...number} x */ Foo.prototype.bar = function(x) {};"
+            + "/** @constructor \n * @extends {Foo} */ function SubFoo() {}"
+            + "/** @override @return {void} */ SubFoo.prototype.bar = "
+            + "    function(x) { f(x); }; (new SubFoo()).bar();",
+        "actual parameter 1 of f does not match formal parameter\n"
+            + "found   : (number|undefined)\n"
+            + "required: string");
   }
 
   public void testInferredParam5() throws Exception {
-    reportMissingOverrides = CheckLevel.OFF;
     testTypes(
-        "/** @param {string} x */ function f(x) {}" +
-        "/** @constructor */ function Foo() {}" +
-        "/** @param {...number} x */ Foo.prototype.bar = function(x) {};" +
-        "/** @constructor \n * @extends {Foo} */ function SubFoo() {}" +
-        "/** @param {number=} x \n * @param {...number} y  */ " +
-        "SubFoo.prototype.bar = " +
-        "    function(x, y) { f(x); }; (new SubFoo()).bar();",
-        "actual parameter 1 of f does not match formal parameter\n" +
-        "found   : (number|undefined)\n" +
-        "required: string");
+        "/** @param {string} x */ function f(x) {}"
+            + "/** @constructor */ function Foo() {}"
+            + "/** @param {...number} x */ Foo.prototype.bar = function(x) {};"
+            + "/** @constructor \n * @extends {Foo} */ function SubFoo() {}"
+            + "/** @override @param {number=} x \n * @param {...number} y  */ "
+            + "SubFoo.prototype.bar = "
+            + "    function(x, y) { f(x); }; (new SubFoo()).bar();",
+        "actual parameter 1 of f does not match formal parameter\n"
+            + "found   : (number|undefined)\n"
+            + "required: string");
   }
 
   public void testInferredParam6() throws Exception {
-    reportMissingOverrides = CheckLevel.OFF;
     testTypes(
-        "/** @param {string} x */ function f(x) {}" +
-        "/** @constructor */ function Foo() {}" +
-        "/** @param {number=} x */ Foo.prototype.bar = function(x) {};" +
-        "/** @constructor \n * @extends {Foo} */ function SubFoo() {}" +
-        "/** @param {number=} x \n * @param {number=} y */ " +
-        "SubFoo.prototype.bar = " +
-        "    function(x, y) { f(y); };",
-        "actual parameter 1 of f does not match formal parameter\n" +
-        "found   : (number|undefined)\n" +
-        "required: string");
+        "/** @param {string} x */ function f(x) {}"
+            + "/** @constructor */ function Foo() {}"
+            + "/** @param {number=} x */ Foo.prototype.bar = function(x) {};"
+            + "/** @constructor \n * @extends {Foo} */ function SubFoo() {}"
+            + "/** @override @param {number=} x \n * @param {number=} y */ "
+            + "SubFoo.prototype.bar = "
+            + "    function(x, y) { f(y); };",
+        "actual parameter 1 of f does not match formal parameter\n"
+            + "found   : (number|undefined)\n"
+            + "required: string");
   }
 
   public void testInferredParam7() throws Exception {
@@ -5693,8 +6021,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "SubFoo.prototype.bar = function(x) {};",
         "mismatch of the bar property type and the type of the " +
         "property it overrides from superclass Foo\n" +
-        "original: function (this:Foo, ...number): undefined\n" +
-        "override: function (this:SubFoo, number): undefined");
+        "original: function(this:Foo, ...number): undefined\n" +
+        "override: function(this:SubFoo, number): undefined");
   }
 
   public void testOverriddenParams4() throws Exception {
@@ -5713,8 +6041,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "SubFoo.prototype.bar = function(x) {};",
         "mismatch of the bar property type and the type of the " +
         "property it overrides from superclass Foo\n" +
-        "original: function (...number): ?\n" +
-        "override: function (number): ?");
+        "original: function(...number): ?\n" +
+        "override: function(number): ?");
   }
 
   public void testOverriddenParams5() throws Exception {
@@ -5769,8 +6097,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "SubFoo.prototype.bar = function(x) {};",
         "mismatch of the bar property type and the type of the " +
         "property it overrides from superclass Foo\n" +
-        "original: function (this:Foo, string): undefined\n" +
-        "override: function (this:SubFoo, number): undefined");
+        "original: function(this:Foo, string): undefined\n" +
+        "override: function(this:SubFoo, number): undefined");
   }
 
   public void testOverriddenReturn1() throws Exception {
@@ -5796,8 +6124,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "    function() { return new SubFoo(); }",
         "mismatch of the bar property type and the type of the " +
         "property it overrides from superclass Foo\n" +
-        "original: function (this:Foo): (SubFoo|null)\n" +
-        "override: function (this:SubFoo): (Foo|null)");
+        "original: function(this:Foo): (SubFoo|null)\n" +
+        "override: function(this:SubFoo): (Foo|null)");
   }
 
   public void testOverriddenReturn3() throws Exception {
@@ -5823,8 +6151,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "    function() { return 3; }",
         "mismatch of the bar property type and the type of the " +
         "property it overrides from superclass Foo\n" +
-        "original: function (this:Foo): string\n" +
-        "override: function (this:SubFoo): number");
+        "original: function(this:Foo): string\n" +
+        "override: function(this:SubFoo): number");
   }
 
   public void testThis1() throws Exception {
@@ -5957,10 +6285,9 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testThis5() throws Exception {
-    testTypes("/** @this Date\n@return {number}*/function h() { return this }",
-        "inconsistent return type\n" +
-        "found   : Date\n" +
-        "required: number");
+    testTypes(
+        "/** @this {Date}\n@return {number}*/function h() { return this }",
+        "inconsistent return type\n" + "found   : Date\n" + "required: number");
   }
 
   public void testThis6() throws Exception {
@@ -6054,7 +6381,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @param {number} x */ function f(x) {}" +
         "f(this.Object);",
         "actual parameter 1 of f does not match formal parameter\n" +
-        "found   : function (new:Object, *=): Object\n" +
+        "found   : function(new:Object, *=): Object\n" +
         "required: number");
   }
 
@@ -6069,7 +6396,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @constructor */ function F() {}" +
         "/** @type {function(this:F)} */ function f() {}" +
         "f();",
-        "\"function (this:F): ?\" must be called with a \"this\" type");
+        "\"function(this:F): ?\" must be called with a \"this\" type");
   }
 
   public void testThisTypeOfFunction3() throws Exception {
@@ -6077,7 +6404,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @constructor */ function F() {}" +
         "F.prototype.bar = function() {};" +
         "var f = (new F()).bar; f();",
-        "\"function (this:F): undefined\" must be called with a \"this\" type");
+        "\"function(this:F): undefined\" must be called with a \"this\" type");
   }
 
   public void testThisTypeOfFunction4() throws Exception {
@@ -6093,8 +6420,16 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "       points[i][0], points[i][1]);" +
         "  }" +
         "}",
-        "\"function (this:F, ?, ?): undefined\" " +
+        "\"function(this:F, ?, ?): undefined\" " +
         "must be called with a \"this\" type");
+  }
+
+  public void testThisTypeOfFunction5() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/** @type {function(this:number)} */",
+        "function f() {",
+        "  var /** number */ n = this;",
+        "}"));
   }
 
   public void testGlobalThis1() throws Exception {
@@ -6201,57 +6536,58 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testControlFlowRestrictsType1() throws Exception {
-    testTypes("/** @return {String?} */ function f() { return null; }" +
-        "/** @type {String?} */ var a = f();" +
-        "/** @type String */ var b = new String('foo');" +
-        "/** @type null */ var c = null;" +
-        "if (a) {" +
-        "  b = a;" +
-        "} else {" +
-        "  c = a;" +
-        "}");
+    testTypes(
+        "/** @return {String?} */ function f() { return null; }"
+            + "/** @type {String?} */ var a = f();"
+            + "/** @type {String} */ var b = new String('foo');"
+            + "/** @type {null} */ var c = null;"
+            + "if (a) {"
+            + "  b = a;"
+            + "} else {"
+            + "  c = a;"
+            + "}");
   }
 
   public void testControlFlowRestrictsType2() throws Exception {
-    testTypes("/** @return {(string,null)} */ function f() { return null; }" +
-        "/** @type {(string,null)} */ var a = f();" +
-        "/** @type string */ var b = 'foo';" +
-        "/** @type null */ var c = null;" +
-        "if (a) {" +
-        "  b = a;" +
-        "} else {" +
-        "  c = a;" +
-        "}",
-        "assignment\n" +
-        "found   : (null|string)\n" +
-        "required: null");
+    testTypes(
+        "/** @return {(string|null)} */ function f() { return null; }"
+            + "/** @type {(string|null)} */ var a = f();"
+            + "/** @type {string} */ var b = 'foo';"
+            + "/** @type {null} */ var c = null;"
+            + "if (a) {"
+            + "  b = a;"
+            + "} else {"
+            + "  c = a;"
+            + "}",
+        "assignment\n" + "found   : (null|string)\n" + "required: null");
   }
 
   public void testControlFlowRestrictsType3() throws Exception {
-    testTypes("/** @type {(string,void)} */" +
-        "var a;" +
-        "/** @type string */" +
-        "var b = 'foo';" +
-        "if (a) {" +
-        "  b = a;" +
-        "}");
+    testTypes(
+        "/** @type {(string|void)} */"
+            + "var a;"
+            + "/** @type {string} */"
+            + "var b = 'foo';"
+            + "if (a) {"
+            + "  b = a;"
+            + "}");
   }
 
   public void testControlFlowRestrictsType4() throws Exception {
     testTypes("/** @param {string} a */ function f(a){}" +
-        "/** @type {(string,undefined)} */ var a;" +
+        "/** @type {(string|undefined)} */ var a;" +
         "a && f(a);");
   }
 
   public void testControlFlowRestrictsType5() throws Exception {
     testTypes("/** @param {undefined} a */ function f(a){}" +
-        "/** @type {(!Array,undefined)} */ var a;" +
+        "/** @type {(!Array|undefined)} */ var a;" +
         "a || f(a);");
   }
 
   public void testControlFlowRestrictsType6() throws Exception {
     testTypes("/** @param {undefined} x */ function f(x) {}" +
-        "/** @type {(string,undefined)} */ var a;" +
+        "/** @type {(string|undefined)} */ var a;" +
         "a && f(a);",
         "actual parameter 1 of f does not match formal parameter\n" +
         "found   : string\n" +
@@ -6260,7 +6596,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testControlFlowRestrictsType7() throws Exception {
     testTypes("/** @param {undefined} x */ function f(x) {}" +
-        "/** @type {(string,undefined)} */ var a;" +
+        "/** @type {(string|undefined)} */ var a;" +
         "a && f(a);",
         "actual parameter 1 of f does not match formal parameter\n" +
         "found   : string\n" +
@@ -6269,7 +6605,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testControlFlowRestrictsType8() throws Exception {
     testTypes("/** @param {undefined} a */ function f(a){}" +
-        "/** @type {(!Array,undefined)} */ var a;" +
+        "/** @type {(!Array|undefined)} */ var a;" +
         "if (a || f(a)) {}");
   }
 
@@ -6316,25 +6652,25 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testSwitchCase3() throws Exception {
-    testTypes("/** @type String */" +
+    testTypes("/** @type {String} */" +
         "var a = new String('foo');" +
         "switch (a) { case 'A': }");
   }
 
   public void testSwitchCase4() throws Exception {
-    testTypes("/** @type {(string,Null)} */" +
+    testTypes("/** @type {(string|Null)} */" +
         "var a = unknown;" +
         "switch (a) { case 'A':break; case null:break; }");
   }
 
   public void testSwitchCase5() throws Exception {
-    testTypes("/** @type {(String,Null)} */" +
+    testTypes("/** @type {(String|Null)} */" +
         "var a = unknown;" +
         "switch (a) { case 'A':break; case null:break; }");
   }
 
   public void testSwitchCase6() throws Exception {
-    testTypes("/** @type {(Number,Null)} */" +
+    testTypes("/** @type {(Number|Null)} */" +
         "var a = unknown;" +
         "switch (a) { case 5:break; case null:break; }");
   }
@@ -6458,42 +6794,42 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testNumberAutoboxing() throws Exception {
-    testTypes("/** @type Number */var a = 4;",
+    testTypes("/** @type {Number} */var a = 4;",
         "initializing variable\n" +
         "found   : number\n" +
         "required: (Number|null)");
   }
 
   public void testNumberUnboxing() throws Exception {
-    testTypes("/** @type number */var a = new Number(4);",
+    testTypes("/** @type {number} */var a = new Number(4);",
         "initializing variable\n" +
         "found   : Number\n" +
         "required: number");
   }
 
   public void testStringAutoboxing() throws Exception {
-    testTypes("/** @type String */var a = 'hello';",
+    testTypes("/** @type {String} */var a = 'hello';",
         "initializing variable\n" +
         "found   : string\n" +
         "required: (String|null)");
   }
 
   public void testStringUnboxing() throws Exception {
-    testTypes("/** @type string */var a = new String('hello');",
+    testTypes("/** @type {string} */var a = new String('hello');",
         "initializing variable\n" +
         "found   : String\n" +
         "required: string");
   }
 
   public void testBooleanAutoboxing() throws Exception {
-    testTypes("/** @type Boolean */var a = true;",
+    testTypes("/** @type {Boolean} */var a = true;",
         "initializing variable\n" +
         "found   : boolean\n" +
         "required: (Boolean|null)");
   }
 
   public void testBooleanUnboxing() throws Exception {
-    testTypes("/** @type boolean */var a = new Boolean(false);",
+    testTypes("/** @type {boolean} */var a = new Boolean(false);",
         "initializing variable\n" +
         "found   : Boolean\n" +
         "required: boolean");
@@ -6704,10 +7040,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "document.getElementById;\n" +
         "var list = /** @type {!Array<string>} */ ['hello', 'you'];\n" +
         "list.push('?');\n" +
-        "document.getElementById('node').innerHTML = list.toString();",
-        // Parse warning, but still applied.
-        "Type annotations are not allowed here. " +
-        "Are you missing parentheses?");
+        "document.getElementById('node').innerHTML = list.toString();");
   }
 
   public void testIssue483() throws Exception {
@@ -6793,27 +7126,26 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testIssue537d() throws Exception {
-    reportMissingOverrides = CheckLevel.OFF;
     testTypes(
-        "/** @constructor */ function Foo() {}" +
-        "Foo.prototype = {" +
-        "  /** @return {Bar} */ x: function() { new Bar(); }," +
-        "  /** @return {Foo} */ y: function() { new Bar(); }" +
-        "};" +
-        "/**\n" +
-        " * @constructor\n" +
-        " * @extends {Foo}\n" +
-        " */\n" +
-        "function Bar() {" +
-        "  this.xy = 3;" +
-        "}" +
-        "/** @return {Bar} */ function f() { return new Bar(); }" +
-        "/** @return {Foo} */ function g() { return new Bar(); }" +
-        "Bar.prototype = {" +
-        "  /** @return {Bar} */ x: function() { new Bar(); }," +
-        "  /** @return {Foo} */ y: function() { new Bar(); }" +
-        "};" +
-        "Bar.prototype.__proto__ = Foo.prototype;");
+        "/** @constructor */ function Foo() {}"
+            + "Foo.prototype = {"
+            + "  /** @return {Bar} */ x: function() { new Bar(); },"
+            + "  /** @return {Foo} */ y: function() { new Bar(); }"
+            + "};"
+            + "/**\n"
+            + " * @constructor\n"
+            + " * @extends {Foo}\n"
+            + " */\n"
+            + "function Bar() {"
+            + "  this.xy = 3;"
+            + "}"
+            + "/** @return {Bar} */ function f() { return new Bar(); }"
+            + "/** @return {Foo} */ function g() { return new Bar(); }"
+            + "Bar.prototype = {"
+            + "  /** @override @return {Bar} */ x: function() { new Bar(); },"
+            + "  /** @override @return {Foo} */ y: function() { new Bar(); }"
+            + "};"
+            + "Bar.prototype.__proto__ = Foo.prototype;");
   }
 
   public void testIssue586() throws Exception {
@@ -6851,8 +7183,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "function G() {}" +
         "/** @type {function(new:G)} */ var x = F;",
         "initializing variable\n" +
-        "found   : function (new:F): undefined\n" +
-        "required: function (new:G): ?");
+        "found   : function(new:F): undefined\n" +
+        "required: function(new:G): ?");
   }
 
   public void testIssue669() throws Exception {
@@ -6879,9 +7211,9 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "* @interface\n" +
         "*/\n" +
         "function TwoNumbers() {}\n" +
-        "/** @type number */\n" +
+        "/** @type {number} */\n" +
         "TwoNumbers.prototype.first;\n" +
-        "/** @type number */\n" +
+        "/** @type {number} */\n" +
         "TwoNumbers.prototype.second;\n" +
         "/** @return {number} */ function f() { return SOME_DEFAULT; }",
         "inconsistent return type\n" +
@@ -6960,12 +7292,12 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testIssue765() throws Exception {
     testTypes(
         "/** @constructor */" +
-        "var AnotherType = function (parent) {" +
+        "var AnotherType = function(parent) {" +
         "    /** @param {string} stringParameter Description... */" +
-        "    this.doSomething = function (stringParameter) {};" +
+        "    this.doSomething = function(stringParameter) {};" +
         "};" +
         "/** @constructor */" +
-        "var YetAnotherType = function () {" +
+        "var YetAnotherType = function() {" +
         "    this.field = new AnotherType(self);" +
         "    this.testfun=function(stringdata) {" +
         "        this.field.doSomething(null);" +
@@ -6980,7 +7312,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testIssue783() throws Exception {
     testTypes(
         "/** @constructor */" +
-        "var Type = function () {" +
+        "var Type = function() {" +
         "  /** @type {Type} */" +
         "  this.me_ = this;" +
         "};" +
@@ -7003,7 +7335,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testIssue810() throws Exception {
     testTypes(
         "/** @constructor */" +
-        "var Type = function () {" +
+        "var Type = function() {" +
         "};" +
         "Type.prototype.doIt = function(obj) {" +
         "  this.prop = obj.unknownProp;" +
@@ -7030,10 +7362,10 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testTypes(
         "/** @constructor */" +
         "function F() {}" +
-        "(function () {" +
+        "(function() {" +
         "  F.prototype = {" +
         "    /** @param {string} x */" +
-        "    bar: function (x) {  }" +
+        "    bar: function(x) {  }" +
         "  };" +
         "})();" +
         "(new F()).bar(true)",
@@ -7079,12 +7411,12 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         " * @param {string} x\n" +
         " * @return {number}\n" +
         " */\n" +
-        "var f1 = function (x) {\n" +
+        "var f1 = function(x) {\n" +
         "  return 3;\n" +
         "};\n" +
         "\n" +
         "/** Function */\n" +
-        "var f2 = function (x) {\n" +
+        "var f2 = function(x) {\n" +
         "  if (!x) throw new Error()\n" +
         "  return /** @type {number} */ (f1('x'))\n" +
         "}\n" +
@@ -7092,11 +7424,11 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/**\n" +
         " * @param {string} x\n" +
         " */\n" +
-        "var f3 = function (x) {};\n" +
+        "var f3 = function(x) {};\n" +
         "\n" +
         "f1(f3);",
         "actual parameter 1 of f1 does not match formal parameter\n" +
-        "found   : function (string): undefined\n" +
+        "found   : function(string): undefined\n" +
         "required: string");
   }
 
@@ -7105,8 +7437,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @param {function(number)} g */ function f(g) {}" +
         "f(function(a, b) {})",
         "actual parameter 1 of f does not match formal parameter\n" +
-        "found   : function (?, ?): undefined\n" +
-        "required: function (number): ?");
+        "found   : function(?, ?): undefined\n" +
+        "required: function(number): ?");
   }
 
   public void testIssue1201() throws Exception {
@@ -7116,8 +7448,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** desc */ F.prototype.bar = function() {};" +
         "g(new F().bar);",
         "actual parameter 1 of g does not match formal parameter\n" +
-        "found   : function (this:F): undefined\n" +
-        "required: function (this:undefined): ?");
+        "found   : function(this:F): undefined\n" +
+        "required: function(this:undefined): ?");
   }
 
   public void testIssue1201b() throws Exception {
@@ -7189,20 +7521,25 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @param {Function} opt_f ... */" +
         "function foo(opt_f) {" +
         "  /** @type {Function} */" +
-        "  return opt_f || function () {};" +
-        "}",
-        "Type annotations are not allowed here. Are you missing parentheses?");
+        "  return opt_f || function() {};" +
+        "}");
   }
 
   /**
-   * Tests that undefined can be compared shallowly to a value of type
-   * (number,undefined) regardless of the side on which the undefined
-   * value is.
+   * Tests that undefined can be compared shallowly to a value of type (number,undefined) regardless
+   * of the side on which the undefined value is.
    */
-  public void testBug901455() throws Exception {
-    testTypes("/** @return {(number,undefined)} */ function a() { return 3; }" +
+  public void testBug901455a() throws Exception {
+    testTypes("/** @return {(number|undefined)} */ function a() { return 3; }" +
         "var b = undefined === a()");
-    testTypes("/** @return {(number,undefined)} */ function a() { return 3; }" +
+  }
+
+  /**
+   * Tests that undefined can be compared shallowly to a value of type (number,undefined) regardless
+   * of the side on which the undefined value is.
+   */
+  public void testBug901455b() throws Exception {
+    testTypes("/** @return {(number|undefined)} */ function a() { return 3; }" +
         "var b = a() === undefined");
   }
 
@@ -7221,19 +7558,25 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testTypes("/** @constructor */function A(){}" +
         "/** @constructor\n * @extends A */function B(){}" +
         "/** @param {B} b" +
-        "\n @return {(A,undefined)} */function foo(b){return b}");
+        "\n @return {(A|undefined)} */function foo(b){return b}");
   }
 
   /**
-   * Tests that assigning two untyped functions to a variable whose type is
-   * inferred and calling this variable is legal.
+   * Tests that assigning two untyped functions to a variable whose type is inferred and calling
+   * this variable is legal.
    */
-  public void testBug911118() throws Exception {
+  public void testBug911118a() throws Exception {
     // verifying the type assigned to function expressions assigned variables
     TypedScope s = parseAndTypeCheckWithScope("var a = function(){};").scope;
     JSType type = s.getVar("a").getType();
-    assertEquals("function (): undefined", type.toString());
+    assertEquals("function(): undefined", type.toString());
+  }
 
+  /**
+   * Tests that assigning two untyped functions to a variable whose type is inferred and calling
+   * this variable is legal.
+   */
+  public void testBug911118b() throws Exception {
     // verifying the bug example
     testTypes("function nullFunction() {};" +
         "var foo = nullFunction;" +
@@ -7688,7 +8031,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     JSType typeC = nodeC.getJSType();
     assertTrue(typeC.isNumber());
 
-    Node nodeB = nodeC.getFirstChild().getFirstChild();
+    Node nodeB = nodeC.getFirstFirstChild();
     JSType typeB = nodeB.getJSType();
     assertEquals("B", typeB.toString());
   }
@@ -7768,7 +8111,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testNew10() throws Exception {
     testTypes("var goog = {};" +
         "/** @param {Function} opt_constructor */" +
-        "goog.Foo = function (opt_constructor) {" +
+        "goog.Foo = function(opt_constructor) {" +
         "new (opt_constructor || Array);" +
         "}");
   }
@@ -7843,6 +8186,23 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
               "/** @constructor */ goog.G = goog.F;");
   }
 
+  public void testNew19() throws Exception {
+    testTypes(
+        "/** @constructor @abstract */ var Foo = function() {}; var foo = new Foo();",
+        INSTANTIATE_ABSTRACT_CLASS);
+  }
+
+  public void testNew20() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/** @constructor @abstract */",
+        "function Bar() {};",
+        "/** @return {function(new:Bar)} */",
+        "function foo() {}",
+        "var Foo = foo();",
+        "var f = new Foo;"),
+        INSTANTIATE_ABSTRACT_CLASS);
+  }
+
   public void testName1() throws Exception {
     assertTypeEquals(VOID_TYPE, testNameNode("undefined"));
   }
@@ -7874,8 +8234,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     Node externs = new Node(Token.SCRIPT);
     externs.setInputId(new InputId("externs"));
 
-    Node externAndJsRoot = new Node(Token.BLOCK, externs, parent);
-    externAndJsRoot.setIsSyntheticBlock(true);
+    IR.root(externs, parent);
 
     makeTypeCheck().processForTesting(null, parent);
     return node.getJSType();
@@ -8004,6 +8363,270 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testTypes("var f = new Function(); f();");
   }
 
+  public void testAbstractMethodCall1() throws Exception {
+    // Converted from Closure style "goog.base" super call
+    testTypes(
+        LINE_JOINER.join(
+            "/** @constructor @abstract */ var A = function() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "/** @constructor @extends {A} */ var B = function() {};",
+            "B.superClass_ = A.prototype",
+            "/** @override */ B.prototype.foo = function() { B.superClass_.foo.call(this); };"),
+        "Abstract super method A.prototype.foo cannot be called");
+  }
+
+  public void testAbstractMethodCall2() throws Exception {
+    // Converted from Closure style "goog.base" super call, with namespace
+    testTypes(
+        LINE_JOINER.join(
+            "/** @const */ var ns = {};",
+            "/** @constructor @abstract */ ns.A = function() {};",
+            "/** @abstract */ ns.A.prototype.foo = function() {};",
+            "/** @constructor @extends {ns.A} */ ns.B = function() {};",
+            "ns.B.superClass_ = ns.A.prototype",
+            "/** @override */ ns.B.prototype.foo = function() {",
+            "  ns.B.superClass_.foo.call(this);",
+            "};"),
+        "Abstract super method ns.A.prototype.foo cannot be called");
+  }
+
+  public void testAbstractMethodCall3() throws Exception {
+    // Converted from ES6 super call
+    testTypes(
+        LINE_JOINER.join(
+            "/** @constructor @abstract */ var A = function() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "/** @constructor @extends {A} */ var B = function() {};",
+            "/** @override */ B.prototype.foo = function() { A.prototype.foo.call(this); };"),
+        "Abstract super method A.prototype.foo cannot be called");
+  }
+
+  public void testAbstractMethodCall4() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @const */ var ns = {};",
+            "/** @constructor @abstract */ ns.A = function() {};",
+            "ns.A.prototype.foo = function() {};",
+            "/** @constructor @extends {ns.A} */ ns.B = function() {};",
+            "ns.B.superClass_ = ns.A.prototype",
+            "/** @override */ ns.B.prototype.foo = function() {",
+            "  ns.B.superClass_.foo.call(this);",
+            "};"));
+  }
+
+  public void testAbstractMethodCall5() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @constructor @abstract */ var A = function() {};",
+            "A.prototype.foo = function() {};",
+            "/** @constructor @extends {A} */ var B = function() {};",
+            "/** @override */ B.prototype.foo = function() { A.prototype.foo.call(this); };"));
+  }
+
+  public void testAbstractMethodCall6() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @const */ var ns = {};",
+            "/** @constructor @abstract */ ns.A = function() {};",
+            "ns.A.prototype.foo = function() {};",
+            "ns.A.prototype.foo.bar = function() {};",
+            "/** @constructor @extends {ns.A} */ ns.B = function() {};",
+            "ns.B.superClass_ = ns.A.prototype",
+            "/** @override */ ns.B.prototype.foo = function() {",
+            "  ns.B.superClass_.foo.bar.call(this);",
+            "};"));
+  }
+
+  public void testAbstractMethodCall7() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @constructor @abstract */ var A = function() {};",
+            "A.prototype.foo = function() {};",
+            "A.prototype.foo.bar = function() {};",
+            "/** @constructor @extends {A} */ var B = function() {};",
+            "/** @override */ B.prototype.foo = function() { A.prototype.foo.bar.call(this); };"));
+  }
+
+  public void testAbstractMethodCall8() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @constructor @abstract */ var A = function() {};",
+            "A.prototype.foo = function() {};",
+            "/** @constructor @extends {A} */ var B = function() {};",
+            "/** @override */ B.prototype.foo = function() { A.prototype.foo['call'](this); };"));
+  }
+
+  public void testAbstractMethodCall9() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @struct @constructor */ var A = function() {};",
+            "A.prototype.foo = function() {};",
+            "/** @struct @constructor @extends {A} */ var B = function() {};",
+            "/** @override */ B.prototype.foo = function() {",
+            "  (function() {",
+            "    return A.prototype.foo.call($jscomp$this);",
+            "  })();",
+            "};"));
+  }
+
+  public void testAbstractMethodCall10() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @constructor @abstract */ var A = function() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "A.prototype.foo.call(new Subtype);"),
+        "Abstract super method A.prototype.foo cannot be called");
+  }
+
+  public void testAbstractMethodCall11() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @constructor @abstract */ function A() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "/** @constructor @extends {A} */ function B() {};",
+            "/** @override */ B.prototype.foo = function() {};",
+            "var abstractMethod = A.prototype.foo;",
+            "abstractMethod.call(new B);"),
+        "Abstract super method A.prototype.foo cannot be called");
+  }
+
+  public void testAbstractMethodCall12() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @constructor @abstract */ var A = function() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "/** @constructor @extends {A} */ var B = function() {};",
+            "B.superClass_ = A.prototype",
+            "/** @override */ B.prototype.foo = function() { B.superClass_.foo.apply(this); };"),
+        "Abstract super method A.prototype.foo cannot be called");
+  }
+
+  public void testAbstractMethodCall13() throws Exception {
+    // Calling abstract @constructor is allowed
+    testTypes(
+        LINE_JOINER.join(
+            "/** @constructor @abstract */ var A = function() {};",
+            "/** @constructor @extends {A} */ var B = function() { A.call(this); };"));
+  }
+
+  public void testAbstractMethodCall_Indirect1() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @constructor @abstract */ function A() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "/** @constructor @extends {A} */ function B() {};",
+            "/** @override */ B.prototype.foo = function() {};",
+            "var abstractMethod = A.prototype.foo;",
+            "(0, abstractMethod).call(new B);"),
+        "Abstract super method A.prototype.foo cannot be called");
+  }
+
+  public void testAbstractMethodCall_Indirect2() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @constructor @abstract */ function A() {};",
+            "/** @abstract */ A.prototype.foo = function() {};",
+            "/** @constructor @extends {A} */ function B() {};",
+            "/** @override */ B.prototype.foo = function() {};",
+            "var abstractMethod = A.prototype.foo;",
+            "(abstractMethod = abstractMethod).call(new B);"),
+        "Abstract super method A.prototype.foo cannot be called");
+  }
+
+  public void testAbstractMethodCall_Es6Class() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract */",
+            "class Base {",
+            "  /** @abstract */",
+            "  foo() {}",
+            "  bar() {",
+            "    this.foo();",
+            "  }",
+            "}",
+            "class Sub extends Base {",
+            "  /** @override */",
+            "  foo() {}",
+            "  /** @override */",
+            "  bar() {",
+            "    this.foo();",
+            "  }",
+            "}"));
+  }
+
+  public void testAbstractMethodCall_Es6Class_prototype() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract */",
+            "class Base {",
+            "  /** @abstract */",
+            "  foo() {}",
+            "}",
+            "class Sub extends Base {",
+            "  /** @override */",
+            "  foo() {}",
+            "  bar() {",
+            "    Sub.prototype.foo();",
+            "  }",
+            "}"));
+  }
+
+  public void testAbstractMethodCall_Es6Class_prototype_warning() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract */",
+            "class Base {",
+            "  /** @abstract */",
+            "  foo() {}",
+            "}",
+            "class Sub extends Base {",
+            "  /** @override */",
+            "  foo() {}",
+            "  bar() {",
+            "    Base.prototype.foo();",
+            "  }",
+            "}"),
+        "Abstract super method Base.prototype.foo cannot be called");
+  }
+
+  public void testNonAbstractMethodCall_Es6Class_prototype() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract */",
+            "class Base {",
+            "  /** @abstract */",
+            "  foo() {}",
+            "  bar() {}",
+            "}",
+            "class Sub extends Base {",
+            "  /** @override */",
+            "  foo() {}",
+            "  /** @override */",
+            "  bar() {",
+            "    Base.prototype.bar();",
+            "  }",
+            "}"));
+  }
+
+  // GitHub issue #2262: https://github.com/google/closure-compiler/issues/2262
+  public void testAbstractMethodCall_Es6ClassWithSpread() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @abstract */",
+            "class Base {",
+            "  /** @abstract */",
+            "  foo() {}",
+            "}",
+            "class Sub extends Base {",
+            "  /** @override */",
+            "  foo() {}",
+            "  /** @param {!Array} arr */",
+            "  bar(arr) {",
+            "    this.foo.apply(this, [].concat(arr));",
+            "  }",
+            "}"));
+  }
+
   public void testFunctionCall1() throws Exception {
     testTypes(
         "/** @param {number} x */ var foo = function(x) {};" +
@@ -8127,7 +8750,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testFunctionBind6() throws Exception {
-    testTypes(Joiner.on('\n').join(
+    testTypes(LINE_JOINER.join(
         "/** @constructor */",
         "function MyType() {",
         "  /** @type {number} */",
@@ -8135,14 +8758,14 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "  var f = function() {",
         "    this.x = 'str';",
         "  }.bind(this);",
-        "}"), Joiner.on('\n').join(
+        "}"), LINE_JOINER.join(
         "assignment to property x of MyType",
         "found   : string",
         "required: number"));
   }
 
   public void testFunctionBind7() throws Exception {
-    testTypes(Joiner.on('\n').join(
+    testTypes(LINE_JOINER.join(
         "/** @constructor */",
         "function MyType() {",
         "  /** @type {number} */",
@@ -8150,14 +8773,14 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "}",
         "var m = new MyType;",
         "(function f() {this.x = 'str';}).bind(m);"),
-        Joiner.on('\n').join(
+        LINE_JOINER.join(
         "assignment to property x of MyType",
         "found   : string",
         "required: number"));
   }
 
   public void testFunctionBind8() throws Exception {
-    testTypes(Joiner.on('\n').join(
+    testTypes(LINE_JOINER.join(
         "/** @constructor */",
         "function MyType() {}",
         "",
@@ -8172,7 +8795,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testFunctionBind9() throws Exception {
-    testTypes(Joiner.on('\n').join(
+    testTypes(LINE_JOINER.join(
         "/** @constructor */",
         "function MyType() {}",
         "",
@@ -8250,7 +8873,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @constructor\n * @extends {base} */function derived() {}\n" +
         "/** @type {!derived} */ var baz = " +
         "/** @type {!derived} */(new base());\n");
-    Node castedExprNode = root.getLastChild().getFirstChild().getFirstChild().getFirstChild();
+    Node castedExprNode = root.getLastChild().getFirstFirstChild().getFirstChild();
     assertEquals("derived", castedExprNode.getJSType().toString());
     assertEquals("base", castedExprNode.getJSTypeBeforeCast().toString());
   }
@@ -8351,6 +8974,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     // Some code assumes that an object literal must have a object type,
     // while because of the cast, it could have any type (including
     // a union).
+    compiler.getOptions().setLanguageIn(CompilerOptions.LanguageMode.ECMASCRIPT_2015);
     testTypes(
         "for (var i = 0; i < 10; i++) {" +
           "var x = /** @type {Object|number} */ ({foo: 3});" +
@@ -8375,9 +8999,6 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testCast17a() throws Exception {
     // Mostly verifying that rhino actually understands these JsDocs.
-    testTypes("/** @constructor */ function Foo() {} \n" +
-        "/** @type {Foo} */ var x = /** @type {Foo} */ (y)");
-
     testTypes("/** @constructor */ function Foo() {} \n" +
         "/** @type {Foo} */ var x = /** @type {Foo} */ (y)");
   }
@@ -8542,25 +9163,40 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "var y = /** @type {null|{length:number}} */(x);");
   }
 
-  public void testCast33() throws Exception {
+  public void testCast33a() throws Exception {
     // null and void should be assignable to any type that accepts one or the
     // other or both.
     testTypes(
         "/** @constructor */ function C() {}\n" +
         "/** @type {null|undefined} */ var x ;\n" +
         "var y = /** @type {string?|undefined} */(x);");
+  }
+
+  public void testCast33b() throws Exception {
+    // null and void should be assignable to any type that accepts one or the
+    // other or both.
     testTypes(
-        "/** @constructor */ function C() {}\n" +
-        "/** @type {null|undefined} */ var x ;\n" +
-        "var y = /** @type {string|undefined} */(x);");
+        "/** @constructor */ function C() {}\n"
+            + "/** @type {null|undefined} */ var x ;\n"
+            + "var y = /** @type {string|undefined} */(x);");
+  }
+
+  public void testCast33c() throws Exception {
+    // null and void should be assignable to any type that accepts one or the
+    // other or both.
     testTypes(
-        "/** @constructor */ function C() {}\n" +
-        "/** @type {null|undefined} */ var x ;\n" +
-        "var y = /** @type {string?} */(x);");
+        "/** @constructor */ function C() {}\n"
+            + "/** @type {null|undefined} */ var x ;\n"
+            + "var y = /** @type {string?} */(x);");
+  }
+
+  public void testCast33d() throws Exception {
+    // null and void should be assignable to any type that accepts one or the
+    // other or both.
     testTypes(
-        "/** @constructor */ function C() {}\n" +
-        "/** @type {null|undefined} */ var x ;\n" +
-        "var y = /** @type {null} */(x);");
+        "/** @constructor */ function C() {}\n"
+            + "/** @type {null|undefined} */ var x ;\n"
+            + "var y = /** @type {null} */(x);");
   }
 
   public void testCast34a() throws Exception {
@@ -8575,129 +9211,6 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @constructor */ function C() {}\n" +
         "/** @type {Function} */ var x ;\n" +
         "var y = /** @type {Object} */(x);");
-  }
-
-  public void testUnnecessaryCastToSuperType() throws Exception {
-    compiler.getOptions().setWarningLevel(DiagnosticGroups.UNNECESSARY_CASTS, CheckLevel.WARNING);
-    testTypes(
-        "/** @constructor */\n" +
-        "function Base() {}\n" +
-        "/**\n" +
-        " * @constructor\n" +
-        " * @extends {Base}\n" +
-        " */\n" +
-        "function Derived() {}\n" +
-        "var d = new Derived();\n" +
-        "var b = /** @type {!Base} */ (d);",
-        "unnecessary cast\n" +
-        "from: Derived\n" +
-        "to  : Base"
-    );
-  }
-
-  public void testUnnecessaryCastToSameType() throws Exception {
-    compiler.getOptions().setWarningLevel(DiagnosticGroups.UNNECESSARY_CASTS, CheckLevel.WARNING);
-    testTypes(
-        "/** @constructor */\n" +
-        "function Base() {}\n" +
-        "var b = new Base();\n" +
-        "var c = /** @type {!Base} */ (b);",
-        "unnecessary cast\n" +
-        "from: Base\n" +
-        "to  : Base"
-    );
-  }
-
-  /**
-   * Checks that casts to unknown ({?}) are not marked as unnecessary.
-   */
-  public void testUnnecessaryCastToUnknown() throws Exception {
-    compiler.getOptions().setWarningLevel(DiagnosticGroups.UNNECESSARY_CASTS, CheckLevel.WARNING);
-    testTypes(
-        "/** @constructor */\n" +
-        "function Base() {}\n" +
-        "var b = new Base();\n" +
-        "var c = /** @type {?} */ (b);");
-  }
-
-  /**
-   * Checks that casts from unknown ({?}) are not marked as unnecessary.
-   */
-  public void testUnnecessaryCastFromUnknown() throws Exception {
-    compiler.getOptions().setWarningLevel(DiagnosticGroups.UNNECESSARY_CASTS, CheckLevel.WARNING);
-    testTypes(
-        "/** @constructor */\n" +
-        "function Base() {}\n" +
-        "/** @type {?} */ var x;\n" +
-        "var y = /** @type {Base} */ (x);");
-  }
-
-  public void testUnnecessaryCastToAndFromUnknown() throws Exception {
-    compiler.getOptions().setWarningLevel(DiagnosticGroups.UNNECESSARY_CASTS, CheckLevel.WARNING);
-    testTypes(
-        "/** @constructor */ function A() {}\n" +
-        "/** @constructor */ function B() {}\n" +
-        "/** @type {!Array<!A>} */ var x = " +
-        "/** @type {!Array<?>} */( /** @type {!Array<!B>} */([]) );");
-  }
-
-  /**
-   * Checks that a cast from {?Base} to {!Base} is not considered unnecessary.
-   */
-  public void testUnnecessaryCastToNonNullType() throws Exception {
-    compiler.getOptions().setWarningLevel(DiagnosticGroups.UNNECESSARY_CASTS, CheckLevel.WARNING);
-    testTypes(
-        "/** @constructor */\n" +
-        "function Base() {}\n" +
-        "var c = /** @type {!Base} */ (random ? new Base() : null);"
-    );
-  }
-
-  public void testUnnecessaryCastToStar() throws Exception {
-    compiler.getOptions().setWarningLevel(DiagnosticGroups.UNNECESSARY_CASTS, CheckLevel.WARNING);
-    testTypes(
-        "/** @constructor */\n" +
-        "function Base() {}\n" +
-        "var c = /** @type {*} */ (new Base());",
-        "unnecessary cast\n" +
-        "from: Base\n" +
-        "to  : *"
-    );
-  }
-
-  public void testNoUnnecessaryCastNoResolvedType() throws Exception {
-    compiler.getOptions().setWarningLevel(DiagnosticGroups.UNNECESSARY_CASTS, CheckLevel.WARNING);
-    testClosureTypes(
-        "var goog = {};\n" +
-        "goog.addDependency = function(a,b,c){};\n" +
-        // A is NoResolvedType.
-        "goog.addDependency('a.js', ['A'], []);\n" +
-
-        // B is a normal type.
-        "/** @constructor @struct */ function B() {}\n" +
-
-        "/**\n" +
-        " * @constructor\n" +
-        " * @template T\n" +
-        " */\n" +
-        "function C() { this.t; }\n" +
-
-        "/**\n" +
-        " * @param {!C<T>} c\n" +
-        " * @return {T}\n" +
-        " * @template T\n" +
-        " */\n" +
-        "function getT(c) { return c.t; }\n" +
-
-        "/** @type {!C<!A>} */\n" +
-        "var c = new C();\n" +
-
-        // Casting from NoResolvedType.
-        "var b = /** @type {!B} */ (getT(c));\n" +
-
-        // Casting to NoResolvedType.
-        "var a = /** @type {!A} */ (new B());\n",
-        null);  // No warning expected.
   }
 
   public void testNestedCasts() throws Exception {
@@ -8759,7 +9272,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testTypes(
         "/** @constructor */ function Foo() {}" +
         "Foo();",
-        "Constructor function (new:Foo): undefined should be called " +
+        "Constructor function(new:Foo): undefined should be called " +
         "with the \"new\" keyword");
   }
 
@@ -8773,14 +9286,18 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testTypeof3() throws Exception {
-    testTypes("function f() {" +
-              "return (typeof 123 == 'number' ||" +
-              "typeof 123 == 'string' ||" +
-              "typeof 123 == 'boolean' ||" +
-              "typeof 123 == 'undefined' ||" +
-              "typeof 123 == 'function' ||" +
-              "typeof 123 == 'object' ||" +
-              "typeof 123 == 'unknown'); }");
+    testTypes(
+        lines(
+            "function f() {",
+            "  return (",
+            "      typeof 123 == 'number' ||",
+            "      typeof 123 == 'string' ||",
+            "      typeof 123 == 'boolean' ||",
+            "      typeof 123 == 'undefined' ||",
+            "      typeof 123 == 'function' ||",
+            "      typeof 123 == 'object' ||",
+            "      typeof 123 == 'symbol' ||",
+            "      typeof 123 == 'unknown'); }"));
   }
 
   public void testConstDecl1() throws Exception {
@@ -8795,6 +9312,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testConstDecl2() throws Exception {
+    compiler.getOptions().setLanguageIn(CompilerOptions.LanguageMode.ECMASCRIPT_2015);
     testTypes(
         "/** @param {?number} x */" +
         "function f(x) { " +
@@ -9025,8 +9543,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testBang7() throws Exception {
-    testTypes("/**@param {(Object,string,null)} x\n" +
-        "@return {(Object,string)}*/function f(x) { return x; }");
+    testTypes("/**@param {(Object|string|null)} x\n" +
+        "@return {(Object|string)}*/function f(x) { return x; }");
   }
 
   public void testDefinePropertyOnNullableObject1() throws Exception {
@@ -9052,7 +9570,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testUnknownConstructorInstanceType2() throws Exception {
-    testTypes("function g(f) { return /** @type Array */(new f()); }");
+    testTypes("function g(f) { return /** @type {Array} */(new f()); }");
   }
 
   public void testUnknownConstructorInstanceType3() throws Exception {
@@ -9105,7 +9623,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
     // goog type on the VAR node
     Node varNode = p.root.getFirstChild();
-    assertEquals(Token.VAR, varNode.getType());
+    assertEquals(Token.VAR, varNode.getToken());
     JSType googNodeType = varNode.getFirstChild().getJSType();
     assertThat(googNodeType).isInstanceOf(ObjectType.class);
 
@@ -9113,8 +9631,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     assertSame(googNodeType, googScopeType);
 
     // goog type on the left of the GETPROP node (under fist ASSIGN)
-    Node getpropFoo1 = varNode.getNext().getFirstChild().getFirstChild();
-    assertEquals(Token.GETPROP, getpropFoo1.getType());
+    Node getpropFoo1 = varNode.getNext().getFirstFirstChild();
+    assertEquals(Token.GETPROP, getpropFoo1.getToken());
     assertEquals("goog", getpropFoo1.getFirstChild().getString());
     JSType googGetpropFoo1Type = getpropFoo1.getFirstChild().getJSType();
     assertThat(googGetpropFoo1Type).isInstanceOf(ObjectType.class);
@@ -9129,8 +9647,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     // goog type on the left of the GETPROP lower level node
     // (under second ASSIGN)
     Node getpropFoo2 = varNode.getNext().getNext()
-        .getFirstChild().getFirstChild().getFirstChild();
-    assertEquals(Token.GETPROP, getpropFoo2.getType());
+        .getFirstFirstChild().getFirstChild();
+    assertEquals(Token.GETPROP, getpropFoo2.getToken());
     assertEquals("goog", getpropFoo2.getFirstChild().getString());
     JSType googGetpropFoo2Type = getpropFoo2.getFirstChild().getJSType();
     assertThat(googGetpropFoo2Type).isInstanceOf(ObjectType.class);
@@ -9152,8 +9670,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         NUMBER_TYPE, googFooGetprop2ObjectType.getPropertyType("bar"));
   }
 
-  public void testAddingMethodsUsingPrototypeIdiomSimpleNamespace()
-      throws Exception {
+  public void testAddingMethodsUsingPrototypeIdiomSimpleNamespace() throws Exception {
     Node js1Node = parseAndTypeCheck(
         "/** @constructor */function A() {}" +
         "A.prototype.m1 = 5");
@@ -9164,22 +9681,20 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     checkObjectType(instanceType, "m1", NUMBER_TYPE);
   }
 
-  public void testAddingMethodsUsingPrototypeIdiomComplexNamespace1()
-      throws Exception {
+  public void testAddingMethodsUsingPrototypeIdiomComplexNamespace1() throws Exception {
     TypeCheckResult p = parseAndTypeCheckWithScope(
         "var goog = {};" +
         "goog.A = /** @constructor */function() {};" +
-        "/** @type number */goog.A.prototype.m1 = 5");
+        "/** @type {number} */goog.A.prototype.m1 = 5");
 
     testAddingMethodsUsingPrototypeIdiomComplexNamespace(p);
   }
 
-  public void testAddingMethodsUsingPrototypeIdiomComplexNamespace2()
-      throws Exception {
+  public void testAddingMethodsUsingPrototypeIdiomComplexNamespace2() throws Exception {
     TypeCheckResult p = parseAndTypeCheckWithScope(
         "var goog = {};" +
         "/** @constructor */goog.A = function() {};" +
-        "/** @type number */goog.A.prototype.m1 = 5");
+        "/** @type {number} */goog.A.prototype.m1 = 5");
 
     testAddingMethodsUsingPrototypeIdiomComplexNamespace(p);
   }
@@ -9197,8 +9712,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     checkObjectType(classA, "m1", NUMBER_TYPE);
   }
 
-  public void testAddingMethodsPrototypeIdiomAndObjectLiteralSimpleNamespace()
-      throws Exception {
+  public void testAddingMethodsPrototypeIdiomAndObjectLiteralSimpleNamespace() throws Exception {
     Node js1Node = parseAndTypeCheck(
         "/** @constructor */function A() {}" +
         "A.prototype = {m1: 5, m2: true}");
@@ -9210,14 +9724,13 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     checkObjectType(instanceType, "m2", BOOLEAN_TYPE);
   }
 
-  public void testDontAddMethodsIfNoConstructor()
-      throws Exception {
+  public void testDontAddMethodsIfNoConstructor() throws Exception {
     Node js1Node = parseAndTypeCheck(
         "function A() {}" +
         "A.prototype = {m1: 5, m2: true}");
 
     JSType functionAType = js1Node.getFirstChild().getJSType();
-    assertEquals("function (): undefined", functionAType.toString());
+    assertEquals("function(): undefined", functionAType.toString());
     assertTypeEquals(UNKNOWN_TYPE,
         U2U_FUNCTION_TYPE.getPropertyType("m1"));
     assertTypeEquals(UNKNOWN_TYPE,
@@ -9253,13 +9766,13 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testPrototypePropertyTypes() throws Exception {
     Node js1Node = parseAndTypeCheck(
         "/** @constructor */function A() {\n" +
-        "  /** @type string */ this.m1;\n" +
-        "  /** @type Object? */ this.m2 = {};\n" +
-        "  /** @type boolean */ this.m3;\n" +
+        "  /** @type {string} */ this.m1;\n" +
+        "  /** @type {Object?} */ this.m2 = {};\n" +
+        "  /** @type {boolean} */ this.m3;\n" +
         "}\n" +
-        "/** @type string */ A.prototype.m4;\n" +
-        "/** @type number */ A.prototype.m5 = 0;\n" +
-        "/** @type boolean */ A.prototype.m6;\n");
+        "/** @type {string} */ A.prototype.m4;\n" +
+        "/** @type {number} */ A.prototype.m5 = 0;\n" +
+        "/** @type {boolean} */ A.prototype.m6;\n");
 
     ObjectType instanceType = getInstanceType(js1Node);
     assertEquals(NATIVE_PROPERTIES_COUNT + 6,
@@ -9275,7 +9788,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testValueTypeBuiltInPrototypePropertyType() throws Exception {
     Node node = parseAndTypeCheck("\"x\".charAt(0)");
-    assertTypeEquals(STRING_TYPE, node.getFirstChild().getFirstChild().getJSType());
+    assertTypeEquals(STRING_TYPE, node.getFirstFirstChild().getJSType());
   }
 
   public void testDeclareBuiltInConstructor() throws Exception {
@@ -9429,8 +9942,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "function() { return \"some string\" };",
         "mismatch of the foo property type and the type of the property it " +
         "overrides from superclass Super\n" +
-        "original: function (this:Super): number\n" +
-        "override: function (this:Sub): string");
+        "original: function(this:Super): number\n" +
+        "override: function(this:Sub): string");
   }
 
   public void testInheritanceCheck10_1() throws Exception {
@@ -9465,8 +9978,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "function() { return \"some string\" };",
         "mismatch of the foo property type and the type of the property it " +
         "overrides from superclass Root\n" +
-        "original: function (this:Root): number\n" +
-        "override: function (this:Sub): string");
+        "original: function(this:Root): number\n" +
+        "override: function(this:Sub): string");
   }
 
   public void testInterfaceInheritanceCheck11() throws Exception {
@@ -9478,8 +9991,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "function(bar) {};",
         "mismatch of the foo property type and the type of the property it " +
         "overrides from superclass Super\n" +
-        "original: function (this:Super, number): undefined\n" +
-        "override: function (this:Sub, string): undefined");
+        "original: function(this:Super, number): undefined\n" +
+        "override: function(this:Sub, string): undefined");
   }
 
   public void testInheritanceCheck12() throws Exception {
@@ -9532,17 +10045,16 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testInheritanceCheck17() throws Exception {
     // Make sure this warning still works, even when there's no
     // @override tag.
-    reportMissingOverrides = CheckLevel.OFF;
     testTypes(
-        "var goog = {};" +
-        "/** @constructor */goog.Super = function() {};" +
-        "/** @param {number} x */ goog.Super.prototype.foo = function(x) {};" +
-        "/** @constructor\n @extends {goog.Super} */goog.Sub = function() {};" +
-        "/** @param {string} x */ goog.Sub.prototype.foo = function(x) {};",
-        "mismatch of the foo property type and the type of the property it " +
-        "overrides from superclass goog.Super\n" +
-        "original: function (this:goog.Super, number): undefined\n" +
-        "override: function (this:goog.Sub, string): undefined");
+        "var goog = {};"
+            + "/** @constructor */goog.Super = function() {};"
+            + "/** @param {number} x */ goog.Super.prototype.foo = function(x) {};"
+            + "/** @constructor\n @extends {goog.Super} */goog.Sub = function() {};"
+            + "/** @override @param {string} x */ goog.Sub.prototype.foo = function(x) {};",
+        "mismatch of the foo property type and the type of the property it "
+            + "overrides from superclass goog.Super\n"
+            + "original: function(this:goog.Super, number): undefined\n"
+            + "override: function(this:goog.Sub, string): undefined");
   }
 
   public void testInterfacePropertyOverride1() throws Exception {
@@ -9603,42 +10115,40 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testInterfaceInheritanceCheck5() throws Exception {
     testTypes(
-        "/** @interface */function Super() {};" +
-        "/** @return {string} */Super.prototype.foo = function() {};" +
-        "/** @constructor\n @implements {Super} */function Sub() {};" +
-        "/** @override\n @return {number} */Sub.prototype.foo =\n" +
-        "function() { return 1; };",
-        "mismatch of the foo property type and the type of the property it " +
-        "overrides from interface Super\n" +
-        "original: function (this:Super): string\n" +
-        "override: function (this:Sub): number");
+        "/** @interface */function Super() {};"
+            + "/** @return {string} */Super.prototype.foo = function() {};"
+            + "/** @constructor\n @implements {Super} */function Sub() {};"
+            + "/** @override\n @return {number} */Sub.prototype.foo = function() { return 1; };",
+        "mismatch of the foo property on type Sub and the type of the property it "
+            + "overrides from interface Super\n"
+            + "original: function(this:Super): string\n"
+            + "override: function(this:Sub): number");
   }
 
   public void testInterfaceInheritanceCheck6() throws Exception {
     testTypes(
-        "/** @interface */function Root() {};" +
-        "/** @return {string} */Root.prototype.foo = function() {};" +
-        "/** @interface\n @extends {Root} */function Super() {};" +
-        "/** @constructor\n @implements {Super} */function Sub() {};" +
-        "/** @override\n @return {number} */Sub.prototype.foo =\n" +
-        "function() { return 1; };",
-        "mismatch of the foo property type and the type of the property it " +
-        "overrides from interface Root\n" +
-        "original: function (this:Root): string\n" +
-        "override: function (this:Sub): number");
+        "/** @interface */function Root() {};"
+            + "/** @return {string} */Root.prototype.foo = function() {};"
+            + "/** @interface\n @extends {Root} */function Super() {};"
+            + "/** @constructor\n @implements {Super} */function Sub() {};"
+            + "/** @override\n @return {number} */Sub.prototype.foo = function() { return 1; };",
+        "mismatch of the foo property on type Sub and the type of the property it "
+            + "overrides from interface Root\n"
+            + "original: function(this:Root): string\n"
+            + "override: function(this:Sub): number");
   }
 
   public void testInterfaceInheritanceCheck7() throws Exception {
     testTypes(
-        "/** @interface */function Super() {};" +
-        "/** @param {number} bar */Super.prototype.foo = function(bar) {};" +
-        "/** @constructor\n @implements {Super} */function Sub() {};" +
-        "/** @override\n  @param {string} bar */Sub.prototype.foo =\n" +
-        "function(bar) {};",
-        "mismatch of the foo property type and the type of the property it " +
-        "overrides from interface Super\n" +
-        "original: function (this:Super, number): undefined\n" +
-        "override: function (this:Sub, string): undefined");
+        "/** @interface */function Super() {};"
+            + "/** @param {number} bar */Super.prototype.foo = function(bar) {};"
+            + "/** @constructor\n @implements {Super} */function Sub() {};"
+            + "/** @override\n  @param {string} bar */Sub.prototype.foo =\n"
+            + "function(bar) {};",
+        "mismatch of the foo property on type Sub and the type of the property it "
+            + "overrides from interface Super\n"
+            + "original: function(this:Super, number): undefined\n"
+            + "override: function(this:Sub, string): undefined");
   }
 
   public void testInterfaceInheritanceCheck8() throws Exception {
@@ -9684,16 +10194,16 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testInterfaceInheritanceCheck12() throws Exception {
     testTypes(
-        "/** @interface */ function I() {};\n" +
-        "/** @type {string} */ I.prototype.foobar;\n" +
-        "/** \n * @constructor \n * @implements {I} */\n" +
-        "function C() {\n" +
-        "/** \n * @type {number} */ this.foobar = 2;};\n" +
-        "/** @type {I} */ \n var test = new C(); alert(test.foobar);",
-        "mismatch of the foobar property type and the type of the property" +
-        " it overrides from interface I\n" +
-        "original: string\n" +
-        "override: number");
+        "/** @interface */ function I() {};\n"
+            + "/** @type {string} */ I.prototype.foobar;\n"
+            + "/** \n * @constructor \n * @implements {I} */\n"
+            + "function C() {\n"
+            + "/** \n * @type {number} */ this.foobar = 2;};\n"
+            + "/** @type {I} */ \n var test = new C(); alert(test.foobar);",
+        "mismatch of the foobar property on type C and the type of the property"
+            + " it overrides from interface I\n"
+            + "original: string\n"
+            + "override: number");
   }
 
   public void testInterfaceInheritanceCheck13() throws Exception {
@@ -9776,14 +10286,14 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
    */
   public void testInterfacePropertyNotImplemented3() throws Exception {
     testTypes(
-        "/** @interface\n @template T */function Int() {};" +
-        "/** @return {T} */Int.prototype.foo = function() {};" +
-        "/** @constructor\n @implements {Int<string>} */function Foo() {};" +
-        "/** @return {number}\n @override */Foo.prototype.foo = function() {};",
-        "mismatch of the foo property type and the type of the property it " +
-        "overrides from interface Int\n" +
-        "original: function (this:Int): string\n" +
-        "override: function (this:Foo): number");
+        "/** @interface\n @template T */function Int() {};"
+            + "/** @return {T} */Int.prototype.foo = function() {};"
+            + "/** @constructor\n @implements {Int<string>} */function Foo() {};"
+            + "/** @return {number}\n @override */Foo.prototype.foo = function() {};",
+        "mismatch of the foo property on type Foo and the type of the property it "
+            + "overrides from interface Int\n"
+            + "original: function(this:Int): string\n"
+            + "override: function(this:Foo): number");
   }
 
   public void testStubConstructorImplementingInterface() throws Exception {
@@ -9800,12 +10310,12 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testObjectLiteral() throws Exception {
     Node n = parseAndTypeCheck("var a = {m1: 7, m2: 'hello'}");
 
-    Node nameNode = n.getFirstChild().getFirstChild();
+    Node nameNode = n.getFirstFirstChild();
     Node objectNode = nameNode.getFirstChild();
 
     // node extraction
-    assertEquals(Token.NAME, nameNode.getType());
-    assertEquals(Token.OBJECTLIT, objectNode.getType());
+    assertEquals(Token.NAME, nameNode.getToken());
+    assertEquals(Token.OBJECTLIT, objectNode.getToken());
 
     // value's type
     ObjectType objectType =
@@ -9853,8 +10363,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         " * @suppress {duplicate}\n" +
         " */ x.abc = function(x) {};",
         "assignment to property abc of x\n" +
-        "found   : function (string): undefined\n" +
-        "required: function (boolean): undefined");
+        "found   : function(string): undefined\n" +
+        "required: function(boolean): undefined");
     // TODO(user): suppress {duplicate} currently also silence the
     // redefining type error in the TypeValidator. Maybe it needs
     // a new suppress name instead?
@@ -9906,7 +10416,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     // ECMA-262 15.9.2: When Date is called as a function rather than as a
     // constructor, it returns a string.
     Node n = parseAndTypeCheck("Date()");
-    assertTypeEquals(STRING_TYPE, n.getFirstChild().getFirstChild().getJSType());
+    assertTypeEquals(STRING_TYPE, n.getFirstFirstChild().getJSType());
   }
 
   // According to ECMA-262, Error & Array function calls are equivalent to
@@ -9915,13 +10425,13 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testCallErrorConstructorAsFunction() throws Exception {
     Node n = parseAndTypeCheck("Error('x')");
     assertTypeEquals(ERROR_TYPE,
-                 n.getFirstChild().getFirstChild().getJSType());
+                 n.getFirstFirstChild().getJSType());
   }
 
   public void testCallArrayConstructorAsFunction() throws Exception {
     Node n = parseAndTypeCheck("Array()");
     assertTypeEquals(ARRAY_TYPE,
-                 n.getFirstChild().getFirstChild().getJSType());
+                 n.getFirstFirstChild().getJSType());
   }
 
   public void testPropertyTypeOfUnionType() throws Exception {
@@ -9995,7 +10505,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   // TODO(user): If we want to support this syntax we have to warn about
   // missing annotations.
   //public void testWarnUnannotatedPropertyOnInterface1() throws Exception {
-  //  testTypes("/** @interface */ u.T = function () {}; u.T.prototype.x;",
+  //  testTypes("/** @interface */ u.T = function() {}; u.T.prototype.x;",
   //      "interface property x is not annotated");
   //}
   //
@@ -10005,7 +10515,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   //}
 
   public void testWarnUnannotatedPropertyOnInterface5() throws Exception {
-    testTypes("/** @interface */ u.T = function () {};\n" +
+    testTypes("/** @interface */ u.T = function() {};\n" +
         "u.T.prototype.x = function() {};");
   }
 
@@ -10017,7 +10527,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   // TODO(user): If we want to support this syntax we have to warn about
   // the invalid type of the interface member.
   //public void testWarnDataPropertyOnInterface1() throws Exception {
-  //  testTypes("/** @interface */ u.T = function () {};\n" +
+  //  testTypes("/** @interface */ u.T = function() {};\n" +
   //      "/** @type {number} */u.T.prototype.x;",
   //      "interface members can only be plain functions");
   //}
@@ -10028,50 +10538,53 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testDataPropertyOnInterface2() throws Exception {
-    reportMissingOverrides = CheckLevel.OFF;
-    testTypes("/** @interface */ function T() {};\n" +
-        "/** @type {number} */T.prototype.x;\n" +
-        "/** @constructor \n" +
-        " *  @implements {T} \n" +
-        " */\n" +
-        "function C() {}\n" +
-        "C.prototype.x = 'foo';",
-        "mismatch of the x property type and the type of the property it " +
-        "overrides from interface T\n" +
-        "original: number\n" +
-        "override: string");
+    testTypes(
+        "/** @interface */ function T() {};\n"
+            + "/** @type {number} */T.prototype.x;\n"
+            + "/** @constructor \n"
+            + " *  @implements {T} \n"
+            + " */\n"
+            + "function C() {}\n"
+            + "/** @override */\n"
+            + "C.prototype.x = 'foo';",
+        "mismatch of the x property on type C and the type of the property it "
+            + "overrides from interface T\n"
+            + "original: number\n"
+            + "override: string");
   }
 
   public void testDataPropertyOnInterface3() throws Exception {
-    testTypes("/** @interface */ function T() {};\n" +
-        "/** @type {number} */T.prototype.x;\n" +
-        "/** @constructor \n" +
-        " *  @implements {T} \n" +
-        " */\n" +
-        "function C() {}\n" +
-        "/** @override */\n" +
-        "C.prototype.x = 'foo';",
-        "mismatch of the x property type and the type of the property it " +
-        "overrides from interface T\n" +
-        "original: number\n" +
-        "override: string");
+    testTypes(
+        "/** @interface */ function T() {};\n"
+            + "/** @type {number} */T.prototype.x;\n"
+            + "/** @constructor \n"
+            + " *  @implements {T} \n"
+            + " */\n"
+            + "function C() {}\n"
+            + "/** @override */\n"
+            + "C.prototype.x = 'foo';",
+        "mismatch of the x property on type C and the type of the property it "
+            + "overrides from interface T\n"
+            + "original: number\n"
+            + "override: string");
   }
 
   public void testDataPropertyOnInterface4() throws Exception {
-    testTypes("/** @interface */ function T() {};\n" +
-        "/** @type {number} */T.prototype.x;\n" +
-        "/** @constructor \n" +
-        " *  @implements {T} \n" +
-        " */\n" +
-        "function C() { /** @type {string} */ \n this.x = 'foo'; }\n",
-        "mismatch of the x property type and the type of the property it " +
-        "overrides from interface T\n" +
-        "original: number\n" +
-        "override: string");
+    testTypes(
+        "/** @interface */ function T() {};\n"
+            + "/** @type {number} */T.prototype.x;\n"
+            + "/** @constructor \n"
+            + " *  @implements {T} \n"
+            + " */\n"
+            + "function C() { /** @type {string} */ \n this.x = 'foo'; }\n",
+        "mismatch of the x property on type C and the type of the property it "
+            + "overrides from interface T\n"
+            + "original: number\n"
+            + "override: string");
   }
 
   public void testWarnDataPropertyOnInterface3() throws Exception {
-    testTypes("/** @interface */ u.T = function () {};\n" +
+    testTypes("/** @interface */ u.T = function() {};\n" +
         "/** @type {number} */u.T.prototype.x = 1;",
         "interface members can only be empty property declarations, "
         + "empty functions, or goog.abstractMethod");
@@ -10087,7 +10600,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   // TODO(user): If we want to support this syntax we should warn about the
   // mismatching types in the two tests below.
   //public void testErrorMismatchingPropertyOnInterface1() throws Exception {
-  //  testTypes("/** @interface */ u.T = function () {};\n" +
+  //  testTypes("/** @interface */ u.T = function() {};\n" +
   //      "/** @param {Number} foo */u.T.prototype.x =\n" +
   //      "/** @param {String} foo */function(foo) {};",
   //      "found   : \n" +
@@ -10106,7 +10619,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   // probably don't want to warn about all missing parameter annotations, but
   // we should be as strict as possible regarding interfaces.
   //public void testErrorMismatchingPropertyOnInterface3() throws Exception {
-  //  testTypes("/** @interface */ u.T = function () {};\n" +
+  //  testTypes("/** @interface */ u.T = function() {};\n" +
   //      "/** @param {Number} foo */u.T.prototype.x =\n" +
   //      "function(foo, bar) {};",
   //      "found   : \n" +
@@ -10114,7 +10627,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   //}
 
   public void testErrorMismatchingPropertyOnInterface4() throws Exception {
-    testTypes("/** @interface */ u.T = function () {};\n" +
+    testTypes("/** @interface */ u.T = function() {};\n" +
         "/** @param {Number} foo */u.T.prototype.x =\n" +
         "function() {};",
         "parameter foo does not appear in u.T.prototype.x's parameter list");
@@ -10124,7 +10637,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     testTypes("/** @interface */ function T() {};\n" +
         "/** @type {number} */T.prototype.x = function() { };",
         "assignment to property x of T.prototype\n" +
-        "found   : function (): undefined\n" +
+        "found   : function(): undefined\n" +
         "required: number");
   }
 
@@ -10135,7 +10648,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         ImmutableList.of(
             "assignment to property x of T.prototype\n" +
             "found   : number\n" +
-            "required: function (this:T): number",
+            "required: function(this:T): number",
             "interface members can only be empty property declarations, " +
             "empty functions, or goog.abstractMethod"));
   }
@@ -10194,19 +10707,168 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testInterfaceExtendsLoop() throws Exception {
-    // TODO(nicksantos): This should emit a warning. This test is still
-    // useful to ensure the compiler doesn't crash.
     testClosureTypesMultipleWarnings(
         suppressMissingProperty("foo") +
             "/** @interface \n * @extends {F} */var G = function() {};" +
             "/** @interface \n * @extends {G} */var F = function() {};" +
             "/** @constructor \n * @implements {F} */var H = function() {};" +
         "alert((new H).foo);",
-        new ArrayList<String>());
+        ImmutableList.of(
+            "extends loop involving F, "
+            + "loop: F -> G -> F",
+            "extends loop involving G, "
+            + "loop: G -> F -> G"));
   }
 
-  public void testConversionFromInterfaceToRecursiveConstructor()
-      throws Exception {
+  public void testInterfaceExtendsLoop2() throws Exception {
+    testClosureTypes(
+        suppressMissingProperty("foo") +
+        "/** @record \n * @extends {F} */var G = function() {};" +
+        "/** @record \n * @extends {G} */var F = function() {};" +
+        "/** @constructor \n * @implements {F} */var H = function() {};" +
+        "alert((new H).foo);",
+        "Parse error. Cycle detected in inheritance chain of type F");
+  }
+
+  public void testInheritPropFromMultipleInterfaces1() throws Exception {
+    // Low#prop gets the type of whichever property is declared last,
+    // even if that type is not the most specific.
+    testTypes(
+        LINE_JOINER.join(
+            "/** @interface */",
+            "function High1() {}",
+            "/** @type {number|string} */",
+            "High1.prototype.prop;",
+            "/** @interface */",
+            "function High2() {}",
+            "/** @type {number} */",
+            "High2.prototype.prop;",
+            "/**",
+            " * @interface",
+            " * @extends {High1}",
+            " * @extends {High2}",
+            " */",
+            "function Low() {}",
+            "function f(/** !Low */ x) { var /** null */ n = x.prop; }"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : (number|string)",
+            "required: null"));
+  }
+
+  public void testInheritPropFromMultipleInterfaces2() throws Exception {
+    // Low#prop gets the type of whichever property is declared last,
+    // even if that type is not the most specific.
+    testTypes(
+        LINE_JOINER.join(
+            "/** @interface */",
+            "function High1() {}",
+            "/** @type {number} */",
+            "High1.prototype.prop;",
+            "/** @interface */",
+            "function High2() {}",
+            "/** @type {number|string} */",
+            "High2.prototype.prop;",
+            "/**",
+            " * @interface",
+            " * @extends {High1}",
+            " * @extends {High2}",
+            " */",
+            "function Low() {}",
+            "function f(/** !Low */ x) { var /** null */ n = x.prop; }"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : number",
+            "required: null"));
+  }
+
+  public void testInheritPropFromMultipleInterfaces3() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/**",
+            " * @interface",
+            " * @template T1",
+            " */",
+            "function MyCollection() {}",
+            "/**",
+            " * @interface",
+            " * @template T2",
+            " * @extends {MyCollection<T2>}",
+            " */",
+            "function MySet() {}",
+            "/**",
+            " * @interface",
+            " * @template T3,T4",
+            " */",
+            "function MyMapEntry() {}",
+            "/**",
+            " * @interface",
+            " * @template T5,T6",
+            " */",
+            "function MyMultimap() {}",
+            "/** @return {MyCollection<MyMapEntry<T5, T6>>} */",
+            "MyMultimap.prototype.entries = function() {};",
+            "/**",
+            " * @interface",
+            " * @template T7,T8",
+            " * @extends {MyMultimap<T7, T8>}",
+            " */",
+            "function MySetMultimap() {}",
+            "/** @return {MySet<MyMapEntry<T7, T8>>} */",
+            "MySetMultimap.prototype.entries = function() {};",
+            "/**",
+            " * @interface",
+            " * @template T9,T10",
+            " * @extends {MyMultimap<T9, T10>}",
+            " */",
+            "function MyFilteredMultimap() {}",
+            "/**",
+            " * @interface",
+            " * @template T11,T12",
+            " * @extends {MyFilteredMultimap<T11, T12>}",
+            " * @extends {MySetMultimap<T11, T12>}",
+            " */",
+            "function MyFilteredSetMultimap() {}"));
+  }
+
+  public void testInheritSameGenericInterfaceFromDifferentPaths() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @const */ var ns = {};",
+            "/**",
+            " * @constructor",
+            " * @template T1",
+            " */",
+            "ns.Foo = function() {};",
+            "/**",
+            " * @interface",
+            " * @template T2",
+            " */",
+            "ns.High = function() {};",
+            "/** @type {!ns.Foo<T2>} */",
+            "ns.High.prototype.myprop;",
+            "/**",
+            " * @interface",
+            " * @template T3",
+            " * @extends {ns.High<T3>}",
+            " */",
+            "ns.Med1 = function() {};",
+            "/**",
+            " * @interface",
+            " * @template T4",
+            " * @extends {ns.High<T4>}",
+            " */",
+            "ns.Med2 = function() {};",
+            "/**",
+            " * @interface",
+            " * @template T5",
+            " * @extends {ns.Med1<T5>}",
+            " * @extends {ns.Med2<T5>}",
+            " */",
+            "ns.Low = function() {};"));
+  }
+
+  public void testConversionFromInterfaceToRecursiveConstructor() throws Exception {
     testClosureTypesMultipleWarnings(
         suppressMissingProperty("foo") +
             "/** @interface */ var OtherType = function() {}\n" +
@@ -10321,7 +10983,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testDfa1() throws Exception {
-    testTypes("var x = null;\n x = 1;\n /** @type number */ var y = x;");
+    testTypes("var x = null;\n x = 1;\n /** @type {number} */ var y = x;");
   }
 
   public void testDfa2() throws Exception {
@@ -10423,7 +11085,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testTypeInferenceWithCast1() throws Exception {
     testTypes(
-        "/**@return {(number,null,undefined)}*/function u(x) {return null;}" +
+        "/**@return {(number|null|undefined)}*/function u(x) {return null;}" +
         "/**@param {number?} x\n@return {number?}*/function f(x) {return x;}" +
         "/**@return {number?}*/function g(x) {" +
         "var y = /**@type {number?}*/(u(x)); return f(y);}");
@@ -10431,7 +11093,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testTypeInferenceWithCast2() throws Exception {
     testTypes(
-        "/**@return {(number,null,undefined)}*/function u(x) {return null;}" +
+        "/**@return {(number|null|undefined)}*/function u(x) {return null;}" +
         "/**@param {number?} x\n@return {number?}*/function f(x) {return x;}" +
         "/**@return {number?}*/function g(x) {" +
         "var y; y = /**@type {number?}*/(u(x)); return f(y);}");
@@ -10439,14 +11101,14 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testTypeInferenceWithCast3() throws Exception {
     testTypes(
-        "/**@return {(number,null,undefined)}*/function u(x) {return 1;}" +
+        "/**@return {(number|null|undefined)}*/function u(x) {return 1;}" +
         "/**@return {number}*/function g(x) {" +
         "return /**@type {number}*/(u(x));}");
   }
 
   public void testTypeInferenceWithCast4() throws Exception {
     testTypes(
-        "/**@return {(number,null,undefined)}*/function u(x) {return 1;}" +
+        "/**@return {(number|null|undefined)}*/function u(x) {return 1;}" +
         "/**@return {number}*/function g(x) {" +
         "return /**@type {number}*/(u(x)) && 1;}");
   }
@@ -10559,7 +11221,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testNoForwardTypeDeclarationAndNoBraces() throws Exception {
-    testTypes("/** @return The result. */ function f() {}");
+    testTypes("/** @return The result. */ function f() {}",
+        RhinoErrorReporter.JSDOC_MISSING_TYPE_WARNING);
   }
 
   public void testForwardTypeDeclaration1() throws Exception {
@@ -10692,7 +11355,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @typedef {number} */ goog.Bar;",
         "variable goog.Bar redefined with type None, " +
         "original definition at [testcode]:1 " +
-        "with type function (new:goog.Bar): undefined");
+        "with type function(new:goog.Bar): undefined");
   }
 
   public void testTypeDef1() throws Exception {
@@ -10779,7 +11442,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testGetTypedPercent4() throws Exception {
     String js = "var n = {};\n /** @constructor */ n.T = function() {};\n" +
-        "/** @type n.T */ var x = new n.T();";
+        "/** @type {n.T} */ var x = new n.T();";
     assertEquals(100.0, getTypedPercent(js), 0.1);
   }
 
@@ -10793,12 +11456,11 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     assertEquals(100.0, getTypedPercent(js), 0.1);
   }
 
-  private double getTypedPercent(String js) throws Exception {
+  private double getTypedPercent(String js) {
     Node n = compiler.parseTestCode(js);
 
-    Node externs = new Node(Token.BLOCK);
-    Node externAndJsRoot = new Node(Token.BLOCK, externs, n);
-    externAndJsRoot.setIsSyntheticBlock(true);
+    Node externs = IR.root();
+    IR.root(externs, n);
 
     TypeCheck t = makeTypeCheck();
     t.processForTesting(null, n);
@@ -10829,7 +11491,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
     assertThat(p.scope.getVar("Foo").getType()).isInstanceOf(FunctionType.class);
     FunctionType fooType = (FunctionType) p.scope.getVar("Foo").getType();
-    assertEquals("function (this:Foo, number): undefined",
+    assertEquals("function(this:Foo, number): undefined",
                  fooType.getPrototype().getPropertyType("bar").toString());
   }
 
@@ -11038,12 +11700,15 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "}", null);
   }
 
-  public void testMissingProperty28() throws Exception {
+  public void testMissingProperty28a() throws Exception {
     testTypes(
         "function f(obj) {" +
         "  /** @type {*} */ obj.foo;" +
         "  return obj.foo;" +
         "}");
+  }
+
+  public void testMissingProperty28b() throws Exception {
     testTypes(
         "function f(obj) {" +
         "  /** @type {*} */ obj.foo;" +
@@ -11219,7 +11884,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "function extend(x, y) {}" +
         "/** @constructor */ function Foo() {}" +
         "extend(Foo, /** @lends */ ({bar: 1}));",
-        "Bad type annotation. missing object name in @lends tag");
+        "Bad type annotation. missing object name in @lends tag." + BAD_TYPE_WIKI_LINK);
   }
 
   public void testLends2() throws Exception {
@@ -11269,7 +11934,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "function extend(x, y) {}" +
         "/** @constructor */ function Foo() {}" +
         "extend(Foo, /** @lends {Foo.prototype|Foo} */ ({bar: 1}));",
-        "Bad type annotation. expected closing }");
+        "Bad type annotation. expected closing }" + BAD_TYPE_WIKI_LINK);
   }
 
   public void testLends8() throws Exception {
@@ -11286,8 +11951,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @constructor */ function Foo() {}" +
         "extend(Foo, /** @lends {!Foo} */ ({bar: 1}));",
         ImmutableList.of(
-            "Bad type annotation. expected closing }",
-            "Bad type annotation. missing object name in @lends tag"));
+            "Bad type annotation. expected closing }" + BAD_TYPE_WIKI_LINK,
+            "Bad type annotation. missing object name in @lends tag." + BAD_TYPE_WIKI_LINK));
   }
 
   public void testLends10() throws Exception {
@@ -11303,23 +11968,20 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testLends11() throws Exception {
-    reportMissingOverrides = CheckLevel.OFF;
     testTypes(
-        "function defineClass(x, y) { return function() {}; } " +
-        "/** @constructor */" +
-        "var Foo = function() {};" +
-        "/** @return {*} */ Foo.prototype.bar = function() { return 3; };" +
-        "/**\n" +
-        " * @constructor\n" +
-        " * @extends {Foo}\n" +
-        " */\n" +
-        "var SubFoo = defineClass(Foo, " +
-        "    /** @lends {SubFoo.prototype} */ ({\n" +
-        "      /** @return {number} */ bar: function() { return 3; }}));" +
-        "/** @return {string} */ function f() { return (new SubFoo()).bar(); }",
-        "inconsistent return type\n" +
-        "found   : number\n" +
-        "required: string");
+        "function defineClass(x, y) { return function() {}; } "
+            + "/** @constructor */"
+            + "var Foo = function() {};"
+            + "/** @return {*} */ Foo.prototype.bar = function() { return 3; };"
+            + "/**\n"
+            + " * @constructor\n"
+            + " * @extends {Foo}\n"
+            + " */\n"
+            + "var SubFoo = defineClass(Foo, "
+            + "    /** @lends {SubFoo.prototype} */ ({\n"
+            + "      /** @override @return {number} */ bar: function() { return 3; }}));"
+            + "/** @return {string} */ function f() { return (new SubFoo()).bar(); }",
+        "inconsistent return type\n" + "found   : number\n" + "required: string");
   }
 
   public void testDeclaredNativeTypeEquality() throws Exception {
@@ -11331,14 +11993,14 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testUndefinedVar() throws Exception {
     Node n = parseAndTypeCheck("var undefined;");
     assertTypeEquals(registry.getNativeType(JSTypeNative.VOID_TYPE),
-                 n.getFirstChild().getFirstChild().getJSType());
+                 n.getFirstFirstChild().getJSType());
   }
 
   public void testFlowScopeBug1() throws Exception {
     Node n = parseAndTypeCheck("/** @param {number} a \n"
         + "* @param {number} b */\n"
         + "function f(a, b) {\n"
-        + "/** @type number */"
+        + "/** @type {number} */"
         + "var i = 0;"
         + "for (; (i + a) < b; ++i) {}}");
 
@@ -11352,12 +12014,12 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     Node n = parseAndTypeCheck("/** @constructor */ function Foo() {};\n"
         + "Foo.prototype.hi = false;"
         + "function foo(a, b) {\n"
-        + "  /** @type Array */"
+        + "  /** @type {Array} */"
         + "  var arr;"
-        + "  /** @type number */"
+        + "  /** @type {number} */"
         + "  var iter;"
         + "  for (iter = 0; iter < arr.length; ++ iter) {"
-        + "    /** @type Foo */"
+        + "    /** @type {Foo} */"
         + "    var afoo = arr[iter];"
         + "    afoo;"
         + "  }"
@@ -11369,12 +12031,12 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         .getLastChild().getLastChild().getJSType());
   }
 
-  public void testAddSingletonGetter() {
+  public void testAddSingletonGetter() throws Exception {
     Node n = parseAndTypeCheck(
         "/** @constructor */ function Foo() {};\n" +
         "goog.addSingletonGetter(Foo);");
     ObjectType o = (ObjectType) n.getFirstChild().getJSType();
-    assertEquals("function (): Foo",
+    assertEquals("function(): Foo",
         o.getPropertyType("getInstance").toString());
     assertEquals("Foo", o.getPropertyType("instance_").toString());
   }
@@ -11382,20 +12044,19 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   public void testTypeCheckStandaloneAST() throws Exception {
     Node n = compiler.parseTestCode("function Foo() { }");
     typeCheck(n);
-    MemoizedScopeCreator scopeCreator = new MemoizedScopeCreator(
+    MemoizedTypedScopeCreator scopeCreator = new MemoizedTypedScopeCreator(
         new TypedScopeCreator(compiler));
     TypedScope topScope = scopeCreator.createScope(n, null);
 
     Node second = compiler.parseTestCode("new Foo");
 
-    Node externs = new Node(Token.BLOCK);
-    Node externAndJsRoot = new Node(Token.BLOCK, externs, second);
-    externAndJsRoot.setIsSyntheticBlock(true);
+    Node externs = IR.root();
+    IR.root(externs, second);
 
     new TypeCheck(
         compiler,
         new SemanticReverseAbstractInterpreter(registry),
-        registry, topScope, scopeCreator, CheckLevel.WARNING)
+        registry, topScope, scopeCreator)
         .process(null, second);
 
     assertEquals(1, compiler.getWarningCount());
@@ -11879,6 +12540,174 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "var x = new Foo();\n");
   }
 
+  public void testTemplateType24() throws Exception {
+    // Recursive templated type definition.
+    testTypes(LINE_JOINER.join(
+            "/**",
+            " * @constructor",
+            " * @template T",
+            " * @param {T} x",
+            " */",
+            "function Foo(x) {",
+            "  /** @type {T} */",
+            "  this.p = x;",
+            "}",
+            "/** @return {Foo<Foo<T>>} */",
+            "Foo.prototype.m = function() {",
+            "  return null;",
+            "};",
+            "/** @return {T} */",
+            "Foo.prototype.get = function() {",
+            "  return this.p;",
+            "};",
+            "var /** null */ n = new Foo(new Object).m().get();"),
+        "initializing variable\n"
+            + "found   : (Foo<Object>|null)\n"
+            + "required: null");
+  }
+
+  public void testTemplateType25() throws Exception {
+    // Non-nullable recursive templated type definition.
+    testTypes(LINE_JOINER.join(
+            "/**",
+            " * @constructor",
+            " * @template T",
+            " * @param {T} x",
+            " */",
+            "function Foo(x) {",
+            "  /** @type {T} */",
+            "  this.p = x;",
+            "}",
+            "/** @return {!Foo<!Foo<T>>} */",
+            "Foo.prototype.m = function() {",
+            "  return new Foo(new Foo(new Object));",
+            "};",
+            "/** @return {T} */",
+            "Foo.prototype.get = function() {",
+            "  return this.p;",
+            "};",
+            "var /** null */ n = new Foo(new Object).m().get();"),
+        "initializing variable\n"
+            + "found   : Foo<Object>\n"
+            + "required: null");
+  }
+
+  public void testTemplateType26() throws Exception {
+    // Class hierarchies which use the same template parameter name should not be treated as
+    // infinite recursion.
+    testTypes(
+        LINE_JOINER.join(
+            "/**",
+            " * @param {T} bar",
+            " * @constructor",
+            " * @template T",
+            " */",
+            "function Bar(bar) {",
+            "  /** @type {T} */",
+            "  this.bar = bar;",
+            "}",
+            "/** @return {T} */",
+            "Bar.prototype.getBar = function() {",
+            "  return this.bar;",
+            "};",
+            "/**",
+            " * @param {T} foo",
+            " * @constructor",
+            " * @template T",
+            " * @extends {Bar<!Array<T>>}",
+            " */",
+            "function Foo(foo) {",
+            "  /** @type {T} */",
+            "  this.foo = foo;",
+            "}",
+            "var /** null */ n = new Foo(new Object).getBar();"),
+        "initializing variable\n" + "found   : Array<Object>\n" + "required: null");
+  }
+
+  public void testTemplateTypeForwardReference() throws Exception {
+    // TODO(martinprobst): the test below asserts incorrect behavior for backwards compatibility.
+    testTypes(
+        LINE_JOINER.join(
+            "/** @param {!Foo<string>} x */",
+            "function f(x) {}",
+            "",
+            "/**",
+            " * @template T",
+            " * @constructor",
+            " */",
+            "function Foo() {}",
+            "",
+            "/** @param {!Foo<number>} x */",
+            "function g(x) {",
+            "  f(x);",
+            "}"));
+  }
+
+  public void testTemplateTypeForwardReference_declared() throws Exception {
+    compiler.forwardDeclareType("Foo");
+    testTypes(
+        LINE_JOINER.join(
+            "/** @param {!Foo<string>} x */",
+            "function f(x) {}",
+            "",
+            "/**",
+            " * @template T",
+            " * @constructor",
+            " */",
+            "function Foo() {}",
+            "",
+            "/** @param {!Foo<number>} x */",
+            "function g(x) {",
+            "  f(x);",
+            "}"));
+  }
+
+  public void testTemplateTypeForwardReference_declaredMissing() throws Exception {
+    compiler.forwardDeclareType("Foo");
+    testTypes(
+        LINE_JOINER.join(
+            "/** @param {!Foo<DoesNotExist>} x */",
+            "function f(x) {}"));
+  }
+
+  public void testTemplateTypeForwardReference_extends() throws Exception {
+    compiler.forwardDeclareType("Bar");
+    compiler.forwardDeclareType("Baz");
+    testTypes(
+        LINE_JOINER.join(
+            "/** @constructor @extends {Bar<Baz>} */",
+            "function Foo() {}",
+            "/** @constructor */",
+            "function Bar() {}"
+            ));
+  }
+
+  public void testSubtypeNotTemplated1() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @interface @template T */ function A() {}",
+            "/** @constructor @implements {A<U>} @template U */ function Foo() {}",
+            "function f(/** (!Object|!Foo<string>) */ x) {",
+            "  var /** null */ n = x;",
+            "}"),
+        "initializing variable\n"
+        + "found   : Object\n"
+        + "required: null");
+  }
+
+  public void testSubtypeNotTemplated2() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @interface @template T */ function A() {}",
+            "/** @constructor @implements {A<U>} @template U */ function Foo() {}",
+            "function f(/** (!Object|!Foo) */ x) {",
+            "  var /** null */ n = x;",
+            "}"),
+        "initializing variable\n"
+        + "found   : Object\n"
+        + "required: null");
+  }
+
   public void testTemplateTypeWithUnresolvedType() throws Exception {
     testClosureTypes(
         "var goog = {};\n" +
@@ -11911,7 +12740,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @type {Generic<!Bar>} */ var y;\n" +
         "" +
         "x = y;\n" + // no warning
-        "/** @type null */ var z1 = y;\n" +
+        "/** @type {null} */ var z1 = y;\n" +
         "",
         "initializing variable\n" +
         "found   : (Generic<Foo>|null)\n" +
@@ -11937,7 +12766,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "/** @type {Generic<!Bar>} */ var y;\n" +
         "" +
         "y = x;\n" + // no warning.
-        "/** @type null */ var z1 = x;\n" +
+        "/** @type {null} */ var z1 = x;\n" +
         "",
         "initializing variable\n" +
         "found   : (Generic<Foo>|null)\n" +
@@ -12098,7 +12927,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         );
   }
 
-  public void disable_testBadTemplateType4() throws Exception {
+  public void disable_testBadTemplateType4() {
     // TODO(johnlenz): Add a check for useless of template types.
     // Unless there are at least two references to a Template type in
     // a definition it isn't useful.
@@ -12111,7 +12940,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         FunctionTypeBuilder.TEMPLATE_TYPE_EXPECTED.format());
   }
 
-  public void disable_testBadTemplateType5() throws Exception {
+  public void disable_testBadTemplateType5() {
     // TODO(johnlenz): Add a check for useless of template types.
     // Unless there are at least two references to a Template type in
     // a definition it isn't useful.
@@ -12125,8 +12954,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         FunctionTypeBuilder.TEMPLATE_TYPE_EXPECTED.format());
   }
 
-  public void disable_testFunctionLiteralUndefinedThisArgument()
-      throws Exception {
+  public void disable_testFunctionLiteralUndefinedThisArgument() {
     // TODO(johnlenz): this was a weird error.  We should add a general
     // restriction on what is accepted for T. Something like:
     // "@template T of {Object|string}" or some such.
@@ -12195,20 +13023,18 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "required: (F|null)");
   }
 
-  public void testActiveXObject() throws Exception {
-    testTypes(
-        "/** @type {Object} */ var x = new ActiveXObject();" +
-        "/** @type { {impossibleProperty} } */ var y = new ActiveXObject();");
-  }
-
   public void testRecordType1() throws Exception {
     testTypes(
-        "/** @param {{prop: number}} x */" +
-        "function f(x) {}" +
-        "f({});",
-        "actual parameter 1 of f does not match formal parameter\n" +
-        "found   : {prop: (number|undefined)}\n" +
-        "required: {prop: number}");
+        LINE_JOINER.join(
+            "/** @param {{prop: number}} x */",
+            "function f(x) {}",
+            "f({});"),
+        LINE_JOINER.join(
+            "actual parameter 1 of f does not match formal parameter",
+            "found   : {prop: (number|undefined)}",
+            "required: {prop: number}",
+            "missing : []",
+            "mismatch: [prop]"));
   }
 
   public void testRecordType2() throws Exception {
@@ -12220,12 +13046,16 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
 
   public void testRecordType3() throws Exception {
     testTypes(
-        "/** @param {{prop: number}} x */" +
-        "function f(x) {}" +
-        "f({prop: 'x'});",
-        "actual parameter 1 of f does not match formal parameter\n" +
-        "found   : {prop: (number|string)}\n" +
-        "required: {prop: number}");
+        LINE_JOINER.join(
+            "/** @param {{prop: number}} x */",
+            "function f(x) {}",
+            "f({prop: 'x'});"),
+        LINE_JOINER.join(
+            "actual parameter 1 of f does not match formal parameter",
+            "found   : {prop: (number|string)}",
+            "required: {prop: number}",
+            "missing : []",
+            "mismatch: [prop]"));
   }
 
   public void testRecordType4() throws Exception {
@@ -12239,12 +13069,18 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "function g(x) {}" +
         "var x = {}; f(x); g(x);",
         ImmutableList.of(
-            "actual parameter 1 of f does not match formal parameter\n" +
-            "found   : {prop: (number|string|undefined)}\n" +
-            "required: {prop: (number|undefined)}",
-            "actual parameter 1 of g does not match formal parameter\n" +
-            "found   : {prop: (number|string|undefined)}\n" +
-            "required: {prop: (string|undefined)}"));
+            LINE_JOINER.join(
+                "actual parameter 1 of f does not match formal parameter",
+                "found   : {prop: (number|string|undefined)}",
+                "required: {prop: (number|undefined)}",
+                "missing : []",
+                "mismatch: [prop]"),
+            LINE_JOINER.join(
+                "actual parameter 1 of g does not match formal parameter",
+                "found   : {prop: (number|string|undefined)}",
+                "required: {prop: (string|undefined)}",
+                "missing : []",
+                "mismatch: [prop]")));
   }
 
   public void testRecordType5() throws Exception {
@@ -12289,7 +13125,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
          + "* @param {{x:string, x:number}} a"
          + "*/"
          + "function f(a) {};",
-         "Bad type annotation. Duplicate record field x");
+         "Bad type annotation. Duplicate record field x." + BAD_TYPE_WIKI_LINK);
   }
 
   public void testDuplicateRecordFields2() throws Exception {
@@ -12298,7 +13134,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
          + " */"
          + "function f(a) {};",
          new String[] {"Bad type annotation. Unknown type x",
-           "Bad type annotation. Duplicate record field number"});
+           "Bad type annotation. Duplicate record field number." + BAD_TYPE_WIKI_LINK});
   }
 
   public void testMultipleExtendsInterface1() throws Exception {
@@ -12365,8 +13201,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "function(bar) {};",
         "mismatch of the foo property type and the type of the property it " +
         "overrides from superclass Super2\n" +
-        "original: function (this:Super2, number): undefined\n" +
-        "override: function (this:Sub, string): undefined");
+        "original: function(this:Super2, number): undefined\n" +
+        "override: function(this:Sub, string): undefined");
   }
 
   public void testMultipleExtendsInterfaceAssignment() throws Exception {
@@ -12384,14 +13220,23 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
   }
 
   public void testMultipleExtendsInterfaceParamPass() throws Exception {
-    testTypes("/** @interface */var I1 = function() {};\n" +
-        "/** @interface */ var I2 = function() {}\n" +
-        "/** @interface\n@extends {I1}\n@extends {I2}*/" +
-        "var I3 = function() {};\n" +
-        "/** @constructor\n@implements {I3}*/var T = function() {};\n" +
-        "var t = new T();\n" +
-        "/** @param x I1 \n@param y I2\n@param z I3*/function foo(x,y,z){};\n" +
-        "foo(t,t,t)\n");
+    testTypes(LINE_JOINER.join(
+        "/** @interface */",
+        "var I1 = function() {};",
+        "/** @interface */",
+        "var I2 = function() {}",
+        "/** @interface @extends {I1} @extends {I2} */",
+        "var I3 = function() {};",
+        "/** @constructor @implements {I3} */",
+        "var T = function() {};",
+        "var t = new T();",
+        "/**",
+        " * @param {I1} x",
+        " * @param {I2} y",
+        " * @param {I3} z",
+        " */",
+        "function foo(x,y,z){};",
+        "foo(t,t,t)"));
   }
 
   public void testBadMultipleExtendsClass() throws Exception {
@@ -12402,8 +13247,8 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         + "* @extends {base2}\n"
         + "*/\n"
         + "function derived() {}",
-        "Bad type annotation. type annotation incompatible "
-        + "with other annotations");
+        "Bad type annotation. type annotation incompatible with other annotations."
+            + BAD_TYPE_WIKI_LINK);
   }
 
   public void testInterfaceExtendsResolution() throws Exception {
@@ -12614,7 +13459,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         + "function Int2() {};");
   }
 
-  public void testGenerics1() throws Exception {
+  public void testGenerics1a() throws Exception {
     String fnDecl = "/** \n" +
         " * @param {T} x \n" +
         " * @param {function(T):T} y \n" +
@@ -12628,28 +13473,26 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "var out;" +
         "/** @type {string} */" +
         "var result = f('hi', function(x){ out = x; return x; });");
-
-    testTypes(
-        fnDecl +
-        "/** @type {string} */" +
-        "var out;" +
-        "var result = f(0, function(x){ out = x; return x; });",
-        "assignment\n" +
-        "found   : number\n" +
-        "required: string");
-
-    testTypes(
-        fnDecl +
-        "var out;" +
-        "/** @type {string} */" +
-        "var result = f(0, function(x){ out = x; return x; });",
-        "assignment\n" +
-        "found   : number\n" +
-        "required: string");
   }
 
-  public void testFilter0()
-      throws Exception {
+  public void testGenerics1b() throws Exception {
+    String fnDecl =
+        "/** \n"
+            + " * @param {T} x \n"
+            + " * @param {function(T):T} y \n"
+            + " * @template T\n"
+            + " */ \n"
+            + "function f(x,y) { return y(x); }\n";
+
+    testTypes(
+        fnDecl
+            + "/** @type {string} */"
+            + "var out;"
+            + "var result = f(0, function(x){ out = x; return x; });",
+        "assignment\n" + "found   : number\n" + "required: string");
+  }
+
+  public void testFilter0() throws Exception {
     testTypes(
         "/**\n" +
         " * @param {T} arr\n" +
@@ -12664,8 +13507,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "var result = filter(arr);");
   }
 
-  public void testFilter1()
-      throws Exception {
+  public void testFilter1() throws Exception {
     testTypes(
         "/**\n" +
         " * @param {!Array<T>} arr\n" +
@@ -12680,8 +13522,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "var result = filter(arr);");
   }
 
-  public void testFilter2()
-      throws Exception {
+  public void testFilter2() throws Exception {
     testTypes(
         "/**\n" +
         " * @param {!Array<T>} arr\n" +
@@ -12699,8 +13540,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "required: Array<number>");
   }
 
-  public void testFilter3()
-      throws Exception {
+  public void testFilter3() throws Exception {
     testTypes(
         "/**\n" +
         " * @param {Array<T>} arr\n" +
@@ -12718,8 +13558,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "required: (Array<number>|null)");
   }
 
-  public void testBackwardsInferenceGoogArrayFilter1()
-      throws Exception {
+  public void testBackwardsInferenceGoogArrayFilter1() throws Exception {
     testClosureTypes(
         CLOSURE_DEFS +
         "/** @type {Array<string>} */" +
@@ -12908,7 +13747,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "required: null");
   }
 
-  public void disable_testTemplatized8() throws Exception {
+  public void disable_testTemplatized8() {
     // TODO(johnlenz): this should generate a warning but does not.
     testTypes(
         "/** @interface\n" +
@@ -12999,7 +13838,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         " * @return {T}\n" +
         " * @template K\n" +
         " */\n" +
-        "C.prototype.method = function (a) {};\n" +
+        "C.prototype.method = function(a) {};\n" +
         "\n" +
         // method returns "?"
         "/** @type {void} */ var x = new C().method(1);");
@@ -13048,7 +13887,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "could not determine the type of this expression");
   }
 
-  public void testUnknownForIn() throws Exception  {
+  public void testUnknownForIn() throws Exception {
     compiler.getOptions().setWarningLevel(DiagnosticGroups.REPORT_UNKNOWN_TYPES,
         CheckLevel.WARNING);
     testTypes("var x = {'a':1}; var y; \n for(\ny\n in x) {}");
@@ -13130,6 +13969,53 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "Property bar never defined on A", false);
   }
 
+  public void testNonexistentPropertyAccessStructInterfaceSubtype() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/**",
+        " * @interface",
+        " * @struct",
+        " */",
+        "var A = function() {};",
+        "",
+        "/**",
+        " * @interface",
+        " * @struct",
+        " * @extends {A}",
+        " */",
+        "var B = function() {};",
+        "/** @return {void} */ B.prototype.bar = function(){};",
+        "",
+        "/** @param {A} a */",
+        "function foo(a) {",
+        "  if (a.bar) { a.bar(); }",
+        "}"),
+        "Property bar never defined on A", false);
+  }
+
+  public void testNonexistentPropertyAccessStructRecordSubtype() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/**",
+        " * @record",
+        " * @struct",
+        " */",
+        "var A = function() {};",
+        "",
+        "/**",
+        " * @record",
+        " * @struct",
+        " * @extends {A}",
+        " */",
+        "var B = function() {};",
+        "/** @return {void} */ B.prototype.bar = function(){};",
+        "",
+        "/** @param {A} a */",
+        "function foo(a) {",
+        "  if (a.bar) { a.bar(); }",
+        "}"),
+        "Property bar never defined on A", false);
+  }
+
+
   public void testNonexistentPropertyAccessStructSubtype2() throws Exception {
     testTypes(
         "/**\n" +
@@ -13145,7 +14031,7 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "Property x never defined on Foo.prototype", false);
   }
 
-  public void testIssue1024() throws Exception {
+  public void testIssue1024a() throws Exception {
      testTypes(
         "/** @param {Object} a */\n" +
         "function f(a) {\n" +
@@ -13157,23 +14043,26 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "function g(b) {\n" +
         "  return b.prototype\n" +
         "}\n");
-     /* TODO(blickly): Make this warning go away.
-      * This is old behavior, but it doesn't make sense to warn about since
-      * both assignments are inferred.
-      */
-     testTypes(
-        "/** @param {Object} a */\n" +
-        "function f(a) {\n" +
-        "  a.prototype = {foo:3};\n" +
-        "}\n" +
-        "/** @param {Object} b\n" +
-        " */\n" +
-        "function g(b) {\n" +
-        "  b.prototype = function(){};\n" +
-        "}\n",
-        "assignment to property prototype of Object\n" +
-        "found   : {foo: number}\n" +
-        "required: function (): undefined");
+  }
+
+  public void testIssue1024b() throws Exception {
+    /* TODO(blickly): Make this warning go away.
+     * This is old behavior, but it doesn't make sense to warn about since
+     * both assignments are inferred.
+     */
+    testTypes(
+        "/** @param {Object} a */\n"
+            + "function f(a) {\n"
+            + "  a.prototype = {foo:3};\n"
+            + "}\n"
+            + "/** @param {Object} b\n"
+            + " */\n"
+            + "function g(b) {\n"
+            + "  b.prototype = function(){};\n"
+            + "}\n",
+        "assignment to property prototype of Object\n"
+            + "found   : {foo: number}\n"
+            + "required: function(): undefined");
   }
 
   public void testBug12722936() throws Exception {
@@ -13247,6 +14136,29 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "var Enum = {};\n" +
         "/** @type {!Object<Enum, number>} */\n" +
         "var k;",
+        TypeCheck.NON_STRINGIFIABLE_OBJECT_KEY);
+  }
+
+  public void testCheckObjectKeysBadKey9() throws Exception {
+    testTypes("/** @type {function(!Object<!Object, number>)} */ var k;",
+        TypeCheck.NON_STRINGIFIABLE_OBJECT_KEY);
+  }
+
+  public void testCheckObjectKeysBadKey10() throws Exception {
+    testTypes("/** @type {function(): !Object<!Object, number>} */ var k;",
+        TypeCheck.NON_STRINGIFIABLE_OBJECT_KEY);
+  }
+
+  public void testCheckObjectKeysBadKey11() throws Exception {
+    testTypes(
+        "/** @constructor */\n" +
+        "function X() {}\n" +
+        "/** @constructor @extends {X} */\n" +
+        "function X2() {}\n" +
+        "/** @enum {!X} */\n" +
+        "var XE = {A:new X};\n" +
+        "/** @type {Object<(!XE|!X2), string>} */\n" +
+        "var Y = {};",
         TypeCheck.NON_STRINGIFIABLE_OBJECT_KEY);
   }
 
@@ -13379,39 +14291,3636 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
         "var k;");
   }
 
-  private void testTypes(String js) throws Exception {
+  public void testBadSuperclassInheritance1() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/** @constructor */",
+        "function Foo() {}",
+        "/** @type {number} */",
+        "Foo.prototype.myprop = 2;",
+        "",
+        "/** @constructor @extends {Foo} */",
+        "function Bar() {}",
+        "/** @type {number} */",
+        "Bar.prototype.myprop = 1;"),
+        TypeCheck.HIDDEN_SUPERCLASS_PROPERTY);
+  }
+
+  public void testBadSuperclassInheritance2() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/** @constructor */",
+        "function Foo() {}",
+        "/** @type {number} */",
+        "Foo.prototype.myprop = 2;",
+        "",
+        "/** @constructor @extends {Foo} */",
+        "function Bar() {}",
+        "/** @override @type {string} */",
+        "Bar.prototype.myprop = 'qwer';"),
+        TypeCheck.HIDDEN_SUPERCLASS_PROPERTY_MISMATCH);
+  }
+
+  // If the property has no initializer, the HIDDEN_SUPERCLASS_PROPERTY_MISMATCH warning is missed.
+  public void testBadSuperclassInheritance3() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/** @constructor */",
+        "function Foo() {}",
+        "/** @type {number} */",
+        "Foo.prototype.myprop = 2;",
+        "",
+        "/** @constructor @extends {Foo} */",
+        "function Bar() {}",
+        "/** @override @type {string} */",
+        "Bar.prototype.myprop;"));
+  }
+
+  public void testCheckObjectKeysWithNamedType() throws Exception {
+    testTypes(
+        "/** @type {!Object<!PseudoId, number>} */\n" +
+        "var k;\n" +
+
+        "/** @typedef {number|string} */\n" +
+        "var PseudoId;");
+  }
+
+  public void testCheckObjectKeyRecursiveType() throws Exception {
+    testTypes(
+        "/** @typedef {!Object<string, !Predicate>} */ var Schema;\n" +
+        "/** @typedef {function(*): boolean|!Schema} */ var Predicate;\n" +
+        "/** @type {!Schema} */ var k;");
+  }
+
+  public void testDontOverrideNativeScalarTypes() throws Exception {
+    testTypes(
+        "string = 123;\n"
+        + "var /** string */ s = 123;",
+        "initializing variable\n"
+        + "found   : number\n"
+        + "required: string");
+
+    testTypes(
+        "var string = goog.require('goog.string');\n"
+        + "var /** string */ s = 123;",
+        new String[] {
+          "Property require never defined on goog",
+          "initializing variable\n"
+          + "found   : number\n"
+          + "required: string"
+        });
+  }
+
+
+  public void testTemplateMap1() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        "function f() {\n"
+        + "  /** @type {Int8Array} */\n"
+        + "  var x = new Int8Array(10);\n"
+        + "  /** @type {IArrayLike<string>} */\n"
+        + "  var y;\n"
+        + "  y = x;\n"
+        + "}",
+        "assignment\n"
+        + "found   : (Int8Array|null)\n"
+        + "required: (IArrayLike<string>|null)");
+  }
+
+  public void testTemplateMap2() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        "function f() {\n"
+        + "  /** @type {Int8Array} */\n"
+        + "  var x = new Int8Array(10);\n"
+        + "\n"
+        + "  /** @type {IObject<number, string>} */\n"
+        + "  var z;\n"
+        + "  z = x;\n"
+        + "}",
+        "assignment\n"
+        + "found   : (Int8Array|null)\n"
+        + "required: (IObject<number,string>|null)");
+  }
+
+  public void testTemplateMap3() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        "function f() {\n"
+        + "  var x = new Int8Array(10);\n"
+        + "\n"
+        + "  /** @type {IArrayLike<string>} */\n"
+        + "  var y;\n"
+        + "  y = x;\n"
+        + "}",
+        "assignment\n"
+        + "found   : Int8Array\n"
+        + "required: (IArrayLike<string>|null)");
+  }
+
+  public void testTemplateMap4() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        "function f() {\n"
+        + "  var x = new Int8Array(10);\n"
+        + "\n"
+        + "  /** @type {IObject<number, string>} */\n"
+        + "  var z;\n"
+        + "  z = x;\n"
+        + "}",
+        "assignment\n"
+        + "found   : Int8Array\n"
+        + "required: (IObject<number,string>|null)");
+  }
+
+  public void testTemplateMap5() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        "function f() {\n"
+        + "  var x = new Int8Array(10);\n"
+        + "  /** @type {IArrayLike<number>} */\n"
+        + "  var y;\n"
+        + "  y = x;\n"
+        + "}");
+  }
+
+  public void testTemplateMap6() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        "function f() {\n"
+        + "  var x = new Int8Array(10);\n"
+        + "  /** @type {IObject<number, number>} */\n"
+        + "  var z;\n"
+        + "  z = x;\n"
+        + "}");
+  }
+
+  private static final String EXTERNS_WITH_IARRAYLIKE_DECLS =
+      "/**\n"
+      + " * @constructor @implements IArrayLike<number>\n"
+      + " */\n"
+      + "function Int8Array(length, opt_byteOffset, opt_length) {}\n"
+      + "/** @type {number} */\n"
+      + "Int8Array.prototype.length;\n"
+      + "/**\n"
+      + "* @constructor\n"
+      + "* @extends {Int8Array}\n"
+      + "*/\n"
+      + "function Int8Array2(len) {};\n"
+      + "/**\n"
+      + " * @interface\n"
+      + " * @extends {IArrayLike<number>}\n"
+      + " */\n"
+      + "function IArrayLike2(){}\n"
+      + "\n"
+      + "/**\n"
+      + " * @constructor\n"
+      + " * @implements {IArrayLike2}\n"
+      + " */\n"
+      + "function Int8Array3(len) {};\n"
+      + "/** @type {number} */\n"
+      + "Int8Array3.prototype.length;\n"
+      + "/**\n" + " * @interface\n"
+      + " * @extends {IArrayLike<VALUE3>}\n"
+      + " * @template VALUE3\n"
+      + " */\n"
+      + "function IArrayLike3(){}\n"
+      + "/**\n"
+      + " * @constructor\n"
+      + " * @implements {IArrayLike3<number>}\n"
+      + " */\n"
+      + "function Int8Array4(length) {};\n"
+      + "/** @type {number} */\n"
+      + "Int8Array4.prototype.length;\n"
+      + "/**\n"
+      + " * @interface\n"
+      + " * @extends {IArrayLike<VALUE2>}\n"
+      + " * @template VALUE2\n"
+      + " */\n"
+      + "function IArrayLike4(){}\n"
+      + "/**\n"
+      + " * @interface\n"
+      + " * @extends {IArrayLike4<boolean>}\n"
+      + " */\n"
+      + "function IArrayLike5(){}\n"
+      + "/**\n"
+      + " * @constructor\n"
+      + " * @implements {IArrayLike5}\n"
+      + " */\n"
+      + "function BooleanArray5(length) {};\n"
+      + "/** @type {number} */\n"
+      + "BooleanArray5.prototype.length;";
+
+  public void testArrayImplementsIArrayLike() throws Exception {
+    testTypes(
+        "/** @type {!Array<number>} */ var arr = [];\n"
+        + "var /** null */ n = arr[0];\n",
+        "initializing variable\n"
+        + "found   : number\n"
+        + "required: null");
+  }
+
+  public void testIArrayLike1() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        "var arr = new Int8Array(7);\n"
+        + "// no warning\n"
+        + "arr[0] = 1;\n"
+        + "arr[1] = 2;\n");
+  }
+
+  public void testIArrayLike2() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        "var arr = new Int8Array(7);\n"
+        + "// have warnings\n"
+        + "arr[3] = false;\n",
+        "assignment\n"
+        + "found   : boolean\n"
+        + "required: number");
+  }
+
+  public void testIArrayLike3() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        "var arr = new Int8Array2(10);\n"
+        + "// have warnings\n"
+        + "arr[3] = false;\n",
+        "assignment\n"
+        + "found   : boolean\n"
+        + "required: number");
+  }
+
+  public void testIArrayLike4() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        "var arr = new Int8Array2(10);\n"
+        + "// have warnings\n"
+        + "arr[3] = false;\n",
+        "assignment\n"
+        + "found   : boolean\n"
+        + "required: number");
+  }
+
+  public void testIArrayLike5() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        "var arr = new Int8Array3(10);\n"
+        + "// have warnings\n"
+        + "arr[3] = false;\n",
+        "assignment\n"
+        + "found   : boolean\n"
+        + "required: number");
+  }
+
+  public void testIArrayLike6() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        "var arr = new Int8Array4(10);\n"
+        + "// have warnings\n"
+        + "arr[3] = false;\n",
+        "assignment\n"
+        + "found   : boolean\n"
+        + "required: number");
+  }
+
+  public void testIArrayLike7() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        "var arr5 = new BooleanArray5(10);\n"
+        + "arr5[2] = true;\n"
+        + "arr5[3] = \"\";",
+        "assignment\n"
+        + "found   : string\n"
+        + "required: boolean");
+  }
+
+  public void testIArrayLike8() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        LINE_JOINER.join(
+            "var arr2 = new Int8Array(10);",
+            "arr2[true] = 1;"),
+        LINE_JOINER.join(
+            "restricted index type",
+            "found   : boolean",
+            "required: number"));
+  }
+
+  public void testIArrayLike9() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        LINE_JOINER.join(
+            "var arr2 = new Int8Array2(10);",
+            "arr2[true] = 1;"),
+        LINE_JOINER.join(
+            "restricted index type",
+            "found   : boolean",
+            "required: number"));
+  }
+
+  public void testIArrayLike10() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        LINE_JOINER.join(
+            "var arr2 = new Int8Array3(10);",
+            "arr2[true] = 1;"),
+        LINE_JOINER.join(
+            "restricted index type",
+            "found   : boolean",
+            "required: number"));
+  }
+
+  public void testIArrayLike11() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        LINE_JOINER.join(
+            "var arr2 = new Int8Array4(10);",
+            "arr2[true] = 1;"),
+        LINE_JOINER.join(
+            "restricted index type",
+            "found   : boolean",
+            "required: number"));
+  }
+
+  public void testIArrayLike12() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        LINE_JOINER.join(
+            "var arr2 = new BooleanArray5(10);",
+            "arr2['prop'] = true;"),
+        LINE_JOINER.join(
+            "restricted index type",
+            "found   : string",
+            "required: number"));
+  }
+
+  public void testIArrayLike13() throws Exception {
+    testTypesWithExtraExterns(EXTERNS_WITH_IARRAYLIKE_DECLS,
+        LINE_JOINER.join(
+            "var numOrStr = null ? 0 : 'prop';",
+            "var arr2 = new BooleanArray5(10);",
+            "arr2[numOrStr] = true;"),
+        LINE_JOINER.join(
+            "restricted index type",
+            "found   : (number|string)",
+            "required: number"));
+  }
+
+  public void testIArrayLikeCovariant1() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "function f(/** !IArrayLike<(string|number)>*/ x){};",
+            "function g(/** !IArrayLike<number> */ arr) {",
+            "    f(arr);",
+            "}"));
+  }
+
+  public void testIArrayLikeCovariant2() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "function f(/** !IArrayLike<(string|number)>*/ x){};",
+            "function g(/** !Array<number> */ arr) {",
+            "    f(arr);",
+            "}"));
+  }
+
+  public void testIArrayLikeStructuralMatch1() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "function f(/** !IArrayLike */ x){};",
+            "/** @constructor */",
+            "function Foo() {}",
+            "/** @type {number} */ Foo.prototype.length",
+            "f(new Foo)"));
+  }
+
+  public void testIArrayLikeStructuralMatch2() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "function f(/** !IArrayLike */ x){};",
+            "/** @constructor */",
+            "function Foo() {",
+            "  /** @type {number} */ this.length = 5;",
+            "}",
+            "f(new Foo)"));
+  }
+
+  public void testIArrayLikeStructuralMatch3() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "function f(/** !IArrayLike */ x){};",
+            "f({length: 5})"));
+  }
+
+  public void testIArrayLikeStructuralMatch4() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "function f(/** !IArrayLike */ x){};",
+            "/** @const */ var ns = {};",
+            "/** @type {number} */ ns.length",
+            "f(ns)"));
+  }
+
+  public void testIArrayLikeStructuralMatch5() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "function f(/** !IArrayLike */ x){};",
+            "var ns = function() {};",
+            "/** @type {number} */ ns.length",
+            "f(ns)"));
+  }
+
+  public void testIArrayLikeStructuralMatch6() throws Exception {
+    // Even though Foo's [] element type may not be string, we treat the lack
+    // of explicit type like ? and allow this.
+    testTypes(
+        LINE_JOINER.join(
+            "function f(/** !IArrayLike<string> */ x){};",
+            "/** @constructor */",
+            "function Foo() {}",
+            "/** @type {number} */ Foo.prototype.length",
+            "f(new Foo)"));
+  }
+
+  public void testTemplatizedStructuralMatch1() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record @template T */",
+            "function WithPropT() {}",
+            "/** @type {T} */ WithPropT.prototype.prop;",
+            "function f(/** !WithPropT<number> */ x){}",
+            "/** @constructor */ function Foo() {}",
+            "/** @type {number} */ Foo.prototype.prop;",
+            "f(new Foo);"));
+  }
+
+  public void testTemplatizedStructuralMatch2() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record @template T */",
+            "function WithPropT() {}",
+            "/** @type {T} */ WithPropT.prototype.prop",
+            "function f(/** !WithPropT<number> */ x){};",
+            "/** @constructor @template U */ function Foo() {}",
+            "/** @type {number} */ Foo.prototype.prop",
+            "f(new Foo)"));
+  }
+
+  public void testTemplatizedStructuralMatch3() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record @template T */",
+            "function WithPropT() {}",
+            "/** @type {T} */ WithPropT.prototype.prop",
+            "function f(/** !WithPropT<string> */ x){};",
+            "/** @constructor @template U */ function Foo() {}",
+            "/** @type {U} */ Foo.prototype.prop",
+            "f(new Foo)"));
+  }
+
+  public void testTemplatizedStructuralMismatch1() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record @template T */",
+            "function WithPropT() {}",
+            "/** @type {T} */ WithPropT.prototype.prop",
+            "function f(/** !WithPropT<number> */ x){};",
+            "/** @constructor */ function Foo() {}",
+            "/** @type {string} */ Foo.prototype.prop = 'str'",
+            "f(new Foo)"),
+        LINE_JOINER.join(
+            "actual parameter 1 of f does not match formal parameter",
+            "found   : Foo",
+            "required: WithPropT<number>",
+        "missing : []",
+        "mismatch: [prop]"));
+  }
+
+  public void testTemplatizedStructuralMismatch2() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record @template T */",
+            "function WithPropT() {}",
+            "/** @type {T} */ WithPropT.prototype.prop",
+            "function f(/** !WithPropT<number> */ x){};",
+            "/** @constructor @template U */ function Foo() {}",
+            "/** @type {string} */ Foo.prototype.prop = 'str'",
+            "f(new Foo)"),
+        LINE_JOINER.join(
+            "actual parameter 1 of f does not match formal parameter",
+            "found   : Foo",
+            "required: WithPropT<number>",
+        "missing : []",
+        "mismatch: [prop]"));
+  }
+
+  public void testTemplatizedStructuralMismatch3() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record @template T */",
+            "function WithPropT() {}",
+            "/** @type {T} */ WithPropT.prototype.prop",
+            "function f(/** !WithPropT<number> */ x){};",
+            "/**",
+            " * @constructor",
+            " * @template U",
+            " * @param {U} x",
+            " */",
+            "function Foo(x) {",
+            "  /** @type {U} */ this.prop = x",
+            "}",
+            "f(new Foo('str'))"),
+        LINE_JOINER.join(
+            "actual parameter 1 of f does not match formal parameter",
+            "found   : Foo<string>",
+            "required: WithPropT<number>",
+        "missing : []",
+        "mismatch: [prop]"));
+  }
+
+  public void testTemplatizedStructuralMismatch4() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record @template T */",
+            "function WithProp() {}",
+            "/** @type {T} */ WithProp.prototype.prop;",
+            "/** @constructor */",
+            "function Foo() {",
+            "  /** @type {number} */ this.prop = 4;",
+            "}",
+            "/**",
+            " * @template U",
+            " * @param {!WithProp<U>} x",
+            " * @param {U} y",
+            " */",
+            "function f(x, y){};",
+            "f(new Foo, 'str')"),
+        LINE_JOINER.join(
+            "actual parameter 1 of f does not match formal parameter",
+            "found   : Foo",
+            "required: WithProp<string>",
+            "missing : []",
+            "mismatch: [prop]"));
+  }
+
+  public void testTemplatizedStructuralMismatchNotFound() throws Exception {
+    // TODO(blickly): We would like to find the parameter mismatch here.
+    // Currently they match with type WithProp<?>, which is somewhat unsatisfying.
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record @template T */",
+            "function WithProp() {}",
+            "/** @type {T} */ WithProp.prototype.prop;",
+            "/** @constructor */",
+            "function Foo() {",
+            "  /** @type {number} */ this.prop = 4;",
+            "}",
+            "/** @constructor */",
+            "function Bar() {",
+            "  /** @type {string} */ this.prop = 'str';",
+            "}",
+            "/**",
+            " * @template U",
+            " * @param {!WithProp<U>} x",
+            " * @param {!WithProp<U>} y",
+            " */",
+            "function f(x, y){};",
+            "f(new Foo, new Bar)"));
+  }
+
+  private static final String EXTERNS_WITH_IOBJECT_DECLS = LINE_JOINER.join(
+      "/**",
+      " * @constructor",
+      " * @implements IObject<(string|number), number>",
+      " */",
+      "function Object2() {}",
+      "/**",
+      " * @constructor",
+      " * @implements IObject<number, number>",
+      " */",
+      "function Object3() {}");
+
+  public void testIObject1() throws Exception {
+    testTypesWithExtraExterns(
+        EXTERNS_WITH_IOBJECT_DECLS,
+        LINE_JOINER.join(
+            "var arr2 = new Object2();",
+            "arr2[0] = 1;"));
+  }
+
+  public void testIObject2() throws Exception {
+    testTypesWithExtraExterns(
+        EXTERNS_WITH_IOBJECT_DECLS,
+        LINE_JOINER.join(
+            "var arr2 = new Object2();",
+            "arr2['str'] = 1;"));
+  }
+
+  public void testIObject3() throws Exception {
+    testTypesWithExtraExterns(
+        EXTERNS_WITH_IOBJECT_DECLS,
+        LINE_JOINER.join(
+            "var arr2 = new Object2();",
+            "arr2[true] = 1;"),
+        LINE_JOINER.join(
+            "restricted index type",
+            "found   : boolean",
+            "required: (number|string)"));
+  }
+
+  public void testIObject4() throws Exception {
+    testTypesWithExtraExterns(
+        EXTERNS_WITH_IOBJECT_DECLS,
+        LINE_JOINER.join(
+            "var arr2 = new Object2();",
+            "arr2[function(){}] = 1;"),
+        LINE_JOINER.join(
+            "restricted index type",
+            "found   : function(): undefined",
+            "required: (number|string)"));
+  }
+
+  public void testIObject5() throws Exception {
+    testTypesWithExtraExterns(
+        EXTERNS_WITH_IOBJECT_DECLS,
+        LINE_JOINER.join(
+            "var arr2 = new Object2();",
+            "arr2[{}] = 1;"),
+        LINE_JOINER.join(
+            "restricted index type",
+            "found   : {}",
+            "required: (number|string)"));
+  }
+
+  public void testIObject6() throws Exception {
+    testTypesWithExtraExterns(
+        EXTERNS_WITH_IOBJECT_DECLS,
+        LINE_JOINER.join(
+            "var arr2 = new Object2();",
+            "arr2[undefined] = 1;"),
+        LINE_JOINER.join(
+            "restricted index type",
+            "found   : undefined",
+            "required: (number|string)"));
+  }
+
+  public void testIObject7() throws Exception {
+    testTypesWithExtraExterns(
+        EXTERNS_WITH_IOBJECT_DECLS,
+        LINE_JOINER.join(
+            "var arr2 = new Object2();",
+            "arr2[null] = 1;"),
+        LINE_JOINER.join(
+            "restricted index type",
+            "found   : null",
+            "required: (number|string)"));
+  }
+
+  public void testIObject8() throws Exception {
+    testTypesWithExtraExterns(
+        EXTERNS_WITH_IOBJECT_DECLS,
+        LINE_JOINER.join(
+            "var arr = new Object2();",
+            "/** @type {boolean} */",
+            "var x = arr[3];"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : number",
+            "required: boolean"));
+  }
+
+  public void testIObject9() throws Exception {
+    testTypesWithExtraExterns(
+        EXTERNS_WITH_IOBJECT_DECLS,
+        LINE_JOINER.join(
+            "var arr = new Object2();",
+            "/** @type {(number|string)} */",
+            "var x = arr[3];"));
+  }
+
+  public void testIObject10() throws Exception {
+    testTypesWithExtraExterns(
+        EXTERNS_WITH_IOBJECT_DECLS,
+        LINE_JOINER.join(
+            "var arr = new Object3();",
+            "/** @type {number} */",
+            "var x = arr[3];"));
+  }
+
+  public void testIObject11() throws Exception {
+    testTypesWithExtraExterns(
+        EXTERNS_WITH_IOBJECT_DECLS,
+        LINE_JOINER.join(
+            "var arr = new Object3();",
+            "/** @type {boolean} */",
+            "var x = arr[3];"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : number",
+            "required: boolean"));
+  }
+
+  public void testIObject12() throws Exception {
+    testTypesWithExtraExterns(
+        EXTERNS_WITH_IOBJECT_DECLS,
+        LINE_JOINER.join(
+            "var arr = new Object3();",
+            "/** @type {string} */",
+            "var x = arr[3];"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : number",
+            "required: string"));
+  }
+
+  public void testIObject13() throws Exception {
+    testTypesWithExtraExterns(
+        EXTERNS_WITH_IOBJECT_DECLS,
+        LINE_JOINER.join(
+            "var arr = new Object3();",
+            "arr[3] = false;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : boolean",
+            "required: number"));
+  }
+
+  public void testIObject14() throws Exception {
+    testTypesWithExtraExterns(
+        EXTERNS_WITH_IOBJECT_DECLS,
+        LINE_JOINER.join(
+            "var arr = new Object3();",
+            "arr[3] = 'value';"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : string",
+            "required: number"));
+  }
+
+  /**
+   * although C1 does not declare to extend Interface1,
+   * obj2 : C1 still structurally matches obj1 : Interface1
+   * because of the structural interface matching
+   * (Interface1 is declared with @record tag)
+   */
+  public void testStructuralInterfaceMatching1() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function Interface1() {}",
+            "/** @type {number} */",
+            "Interface1.prototype.length;",
+            "",
+            "/** @constructor */",
+            "function C1() {}",
+            "/** @type {number} */",
+            "C1.prototype.length;"),
+        LINE_JOINER.join(
+            "/** @type{Interface1} */",
+            "var obj1;",
+            "/** @type{C1} */",
+            "var obj2 = new C1();",
+            "obj1 = obj2;"));
+  }
+
+
+
+  public void testStructuralInterfaceMatching2() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function Interface1() {}",
+            "/** @type {number} */",
+            "Interface1.prototype.length;",
+            "",
+            "/** @constructor */",
+            "function C1() {}",
+            "/** @type {number} */",
+            "C1.prototype.length;"),
+        LINE_JOINER.join(
+            "/** @type{Interface1} */",
+            "var obj1;",
+            "var obj2 = new C1();",
+            "obj1 = obj2;"));
+  }
+
+  public void testStructuralInterfaceMatching3() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function I1() {}",
+            "",
+            "/** @record */",
+            "function I2() {}"),
+        LINE_JOINER.join(
+            "/** @type {I1} */",
+            "var i1;",
+            "/** @type {I2} */",
+            "var i2;",
+            "i1 = i2;",
+            "i2 = i1;"));
+  }
+
+  public void testStructuralInterfaceMatching4_1() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function I1() {}",
+            "",
+            "/** @record */",
+            "function I2() {}"),
+        LINE_JOINER.join(
+            "/** @type {I1} */",
+            "var i1;",
+            "/** @type {I2} */",
+            "var i2;",
+            "i2 = i1;",
+            "i1 = i2;"));
+  }
+
+  public void testStructuralInterfaceMatching5_1() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function I1() {}",
+            "",
+            "/** @interface */",
+            "function I3() {}",
+            "/** @type {number} */",
+            "I3.prototype.length;"),
+        LINE_JOINER.join(
+            "/** @type {I1} */",
+            "var i1;",
+            "/** @type {I3} */",
+            "var i3;",
+            "i1 = i3;"));
+  }
+
+  public void testStructuralInterfaceMatching7_1() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function I1() {}",
+            "",
+            "/** @constructor */",
+            "function C1() {}",
+            "/** @type {number} */",
+            "C1.prototype.length;"),
+        LINE_JOINER.join(
+            "/** @type {I1} */",
+            "var i1;" +
+            "/** @type {C1} */",
+            "var c1;",
+            "i1 = c1;   // no warning"));
+  }
+
+  public void testStructuralInterfaceMatching9() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C1() {}",
+            "/** @type {number} */",
+            "C1.prototype.length;",
+            "",
+            "/** @constructor */",
+            "function C2() {}",
+            "/** @type {number} */",
+            "C2.prototype.length;"),
+        LINE_JOINER.join(
+            "/** @type {C1} */",
+            "var c1;" +
+            "/** @type {C2} */",
+            "var c2;",
+            "c1 = c2;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : (C2|null)",
+            "required: (C1|null)"));
+  }
+
+  public void testStructuralInterfaceMatching11_1() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @interface */",
+            "function I3() {}",
+            "/** @type {number} */",
+            "I3.prototype.length;",
+            "",
+            "/** ",
+            " * @record",
+            " * @extends I3",
+            " */",
+            "function I4() {}",
+            "/** @type {boolean} */",
+            "I4.prototype.prop;",
+            "",
+            "/** @constructor */",
+            "function C4() {}",
+            "/** @type {number} */",
+            "C4.prototype.length;",
+            "/** @type {boolean} */",
+            "C4.prototype.prop;"),
+        LINE_JOINER.join(
+            "/** @type {I4} */",
+            "var i4;" +
+            "/** @type {C4} */",
+            "var c4;",
+            "i4 = c4;"));
+  }
+
+  public void testStructuralInterfaceMatching13() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/**",
+            "   * @record",
+            "   */",
+            "  function I5() {}",
+            "  /** @type {I5} */",
+            "  I5.prototype.next;",
+            "",
+            "  /**",
+            "   * @interface",
+            "   */",
+            "  function C5() {}",
+            "  /** @type {C5} */",
+            "  C5.prototype.next;"),
+        LINE_JOINER.join(
+            "/** @type {I5} */",
+            "var i5;" +
+            "/** @type {C5} */",
+            "var c5;",
+            "i5 = c5;"));
+  }
+
+  public void testStructuralInterfaceMatching13_2() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/**",
+            "   * @record",
+            "   */",
+            "  function I5() {}",
+            "  /** @type {I5} */",
+            "  I5.prototype.next;",
+            "",
+            "  /**",
+            "   * @record",
+            "   */",
+            "  function C5() {}",
+            "  /** @type {C5} */",
+            "  C5.prototype.next;"),
+        LINE_JOINER.join(
+            "/** @type {I5} */",
+            "var i5;" +
+            "/** @type {C5} */",
+            "var c5;",
+            "i5 = c5;"));
+  }
+
+  public void testStructuralInterfaceMatching13_3() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/**",
+            "   * @interface",
+            "   */",
+            "  function I5() {}",
+            "  /** @type {I5} */",
+            "  I5.prototype.next;",
+            "",
+            "  /**",
+            "   * @record",
+            "   */",
+            "  function C5() {}",
+            "  /** @type {C5} */",
+            "  C5.prototype.next;"),
+        LINE_JOINER.join(
+            "/** @type {I5} */",
+            "var i5;" +
+            "/** @type {C5} */",
+            "var c5;",
+            "i5 = c5;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : (C5|null)",
+            "required: (I5|null)"));
+  }
+
+  public void testStructuralInterfaceMatching15() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function I5() {}",
+            "/** @type {I5} */",
+            "I5.prototype.next;",
+            "",
+            "/** @constructor */",
+            "function C6() {}",
+            "/** @type {C6} */",
+            "C6.prototype.next;",
+            "",
+            "/** @constructor */",
+            "function C5() {}",
+            "/** @type {C6} */",
+            "C5.prototype.next;"),
+        LINE_JOINER.join(
+            "/** @type {I5} */",
+            "var i5;" +
+            "/** @type {C5} */",
+            "var c5;",
+            "i5 = c5;"));
+  }
+
+  /**
+   * a very long structural chain, all property types from I5 and C5
+   * are structurally the same, I5 is declared as @record
+   * so structural interface matching will be performed
+   */
+  private static final String EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD =
+      LINE_JOINER.join(
+          "/** @record */",
+          "function I5() {}",
+          "/** @type {I5} */",
+          "I5.prototype.next;",
+          "",
+          "/** @constructor */",
+          "function C6() {}",
+          "/** @type {C6} */",
+          "C6.prototype.next;",
+          "",
+          "/** @constructor */",
+          "function C6_1() {}",
+          "/** @type {C6} */",
+          "C6_1.prototype.next;",
+          "",
+          "/** @constructor */",
+          "function C6_2() {}",
+          "/** @type {C6_1} */",
+          "C6_2.prototype.next;",
+          "",
+          "/** @constructor */",
+          "function C6_3() {}",
+          "/** @type {C6_2} */",
+          "C6_3.prototype.next;",
+          "",
+          "/** @constructor */",
+          "function C6_4() {}",
+          "/** @type {C6_3} */",
+          "C6_4.prototype.next;",
+          "",
+          "/** @constructor */",
+          "function C6_5() {}",
+          "/** @type {C6_4} */",
+          "C6_5.prototype.next;",
+          "",
+          "/** @constructor */",
+          "function C5() {}",
+          "/** @type {C6_5} */",
+          "C5.prototype.next;");
+
+  public void testStructuralInterfaceMatching16_1() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+        LINE_JOINER.join(
+            "/** @type {I5} */",
+            "var i5;" +
+            "/** @type {C5} */",
+            "var c5;",
+            "i5 = c5;"));
+  }
+
+  public void testStructuralInterfaceMatching17_1() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+        LINE_JOINER.join(
+            "/** @type {C5} */",
+            "var c5;",
+            "/**",
+            " * @param {I5} i5",
+            " */",
+            "function f(i5) {}",
+            "",
+            "f(c5);"));
+  }
+
+  public void testStructuralInterfaceMatching18_1() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+        LINE_JOINER.join(
+            "/** @type {I5} */",
+            "var i5;" +
+            "/** @type {C5} */",
+            "var c5;",
+            "i5.next = c5;"));
+  }
+
+  /**
+   * a very long non-structural chain, there is a slight difference between
+   * the property type structural of I5 and that of C5:
+   * I5.next.next.next.next.next has type I5
+   * while
+   * C5.next.next.next.next.next has type number
+   */
+  private static final String EXTERNS_FOR_LONG_NONMATCHING_CHAIN =
+      LINE_JOINER.join(
+          "/** @record */",
+          "function I5() {}",
+          "/** @type {I5} */",
+          "I5.prototype.next;",
+          "",
+          "/** @constructor */",
+          "function C6() {}",
+          "/** @type {number} */",
+          "C6.prototype.next;",
+          "",
+          "/** @constructor */",
+          "function C6_1() {}",
+          "/** @type {C6} */",
+          "C6_1.prototype.next;",
+          "",
+          "/** @constructor */",
+          "function C6_2() {}",
+          "/** @type {C6_1} */",
+          "C6_2.prototype.next;",
+          "",
+          "/** @constructor */",
+          "function C6_3() {}",
+          "/** @type {C6_2} */",
+          "C6_3.prototype.next;",
+          "",
+          "/** @constructor */",
+          "function C6_4() {}",
+          "/** @type {C6_3} */",
+          "C6_4.prototype.next;",
+          "",
+          "/** @constructor */",
+          "function C6_5() {}",
+          "/** @type {C6_4} */",
+          "C6_5.prototype.next;",
+          "",
+          "/** @interface */",
+          "function C5() {}",
+          "/** @type {C6_5} */",
+          "C5.prototype.next;");
+
+  public void testStructuralInterfaceMatching19() throws Exception {
+    testTypesWithExtraExterns(
+        // the type structure of I5 and C5 are different
+        EXTERNS_FOR_LONG_NONMATCHING_CHAIN,
+        LINE_JOINER.join(
+            "/** @type {I5} */",
+            "var i5;",
+            "/** @type {C5} */",
+            "var c5;",
+            "i5 = c5;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : (C5|null)",
+            "required: (I5|null)"));
+  }
+
+  public void testStructuralInterfaceMatching20() throws Exception {
+    testTypesWithExtraExterns(
+        // the type structure of I5 and C5 are different
+        EXTERNS_FOR_LONG_NONMATCHING_CHAIN,
+        LINE_JOINER.join(
+            "/** @type {C5} */",
+            "var c5;",
+            "/**",
+            " * @param {I5} i5",
+            " */",
+            "function f(i5) {}",
+            "",
+            "f(c5);"),
+        LINE_JOINER.join(
+            "actual parameter 1 of f does not match formal parameter",
+            "found   : (C5|null)",
+            "required: (I5|null)"));
+  }
+
+  public void testStructuralInterfaceMatching21() throws Exception {
+    testTypesWithExtraExterns(
+        // the type structure of I5 and C5 are different
+        EXTERNS_FOR_LONG_NONMATCHING_CHAIN,
+        LINE_JOINER.join(
+            "/** @type {I5} */",
+            "var i5;",
+            "/** @type {C5} */",
+            "var c5;",
+            "i5.next = c5;"),
+        LINE_JOINER.join(
+            "assignment to property next of I5",
+            "found   : (C5|null)",
+            "required: (I5|null)"));
+  }
+
+  /**
+   * structural interface matching will also be able to
+   * structurally match ordinary function types
+   * check if the return types of the ordinary function types match
+   * (should match, since declared with @record)
+   */
+  public void testStructuralInterfaceMatching22_1() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"));
+  }
+
+  /**
+   * structural interface matching will also be able to
+   * structurally match ordinary function types
+   * check if the return types of the ordinary function types match
+   * (should not match)
+   */
+  public void testStructuralInterfaceMatching23() throws Exception {
+    testTypesWithExtraExterns(
+        // the type structure of I5 and C5 are different
+        LINE_JOINER.join(
+            EXTERNS_FOR_LONG_NONMATCHING_CHAIN,
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : (C7|null)",
+            "required: (I7|null)"));
+  }
+
+  /**
+   * structural interface matching will also be able to
+   * structurally match ordinary function types
+   * check if the parameter types of the ordinary function types match
+   * (should match, since declared with @record)
+   */
+  public void testStructuralInterfaceMatching24_1() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(C5): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(I5): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"));
+  }
+
+  /**
+   * structural interface matching will also be able to
+   * structurally match ordinary function types
+   * check if the parameter types of the ordinary function types match
+   * (should match, since declared with @record)
+   */
+  public void testStructuralInterfaceMatching26_1() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(C5, C5, I5): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(I5, C5): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"));
+  }
+
+  /**
+   * structural interface matching will also be able to
+   * structurally match ordinary function types
+   * check if the parameter types of the ordinary function types match
+   * (should match)
+   */
+  public void testStructuralInterfaceMatching29_1() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"));
+  }
+
+  /**
+   * the "this" of I5 and C5 are covariants, so should match
+   */
+  public void testStructuralInterfaceMatching30_1_1() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(this:I5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:C5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"));
+  }
+
+  /**
+   * the "this" of I5 and C5 are covariants, so should match
+   */
+  public void testStructuralInterfaceMatching30_2_1() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(this:C5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:I5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"));
+  }
+
+  /**
+   * the "this" of I5 and C5 are covariants, so should match
+   */
+  public void testStructuralInterfaceMatching30_3_1() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */ function I5() {}",
+            "/** @constructor @implements {I5} */ function C5() {}",
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(this:C5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:I5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"));
+  }
+
+  /**
+   * I7 is declared with @record tag, so it will match
+   */
+  public void testStructuralInterfaceMatching30_3_2() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @interface */ function I5() {}",
+            "/** @constructor @implements {I5} */ function C5() {}",
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(this:C5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:I5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"));
+  }
+
+  /**
+   * Although I7 is declared with @record tag,
+   * note that I5 is declared with @interface and C5 does not
+   * extend I5, so it will not match
+   */
+  public void testStructuralInterfaceMatching30_3_3() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @interface */ function I5() {}",
+            "/** @constructor */ function C5() {}",
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(this:C5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:I5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : (C7|null)",
+            "required: (I7|null)"));
+  }
+
+  public void testStructuralInterfaceMatching30_3_4() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            "/** @record */ function I5() {}",
+            "/** @constructor */ function C5() {}",
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(this:C5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:I5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"));
+  }
+
+  /**
+   * the "this" of I5 and C5 are covariants, so should match
+   */
+  public void testStructuralInterfaceMatching30_4_1() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            "/** @record */ function I5() {}",
+            "/** @constructor @implements {I5} */ function C5() {}",
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(this:I5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:C5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"));
+  }
+
+  /**
+   * although I7 is declared with @record tag
+   * I5 is declared with @interface tag, so no structural interface matching
+   */
+  public void testStructuralInterfaceMatching30_4_2() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @interface */ function I5() {}",
+            "/** @constructor */ function C5() {}",
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(this:I5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:C5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : (C7|null)",
+            "required: (I7|null)"));
+  }
+
+  /**
+   * structural interface matching will also be able to
+   * structurally match ordinary function types
+   * check if the this types of the ordinary function types match
+   * (should match)
+   */
+  public void testStructuralInterfaceMatching31_1() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(this:C5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:I5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"));
+  }
+
+  /**
+   * test structural interface matching for record types
+   */
+  public void testStructuralInterfaceMatching32_2() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(this:C5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:I5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {{prop: I7, prop2: C7}}*/",
+            "var r1;",
+            "/** @type {{prop: C7, prop2: C7}} */",
+            "var r2;",
+            "r1 = r2;"));
+  }
+
+  /**
+   * test structural interface matching for record types
+   */
+  public void testStructuralInterfaceMatching33_3() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(this:C5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:I5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {{prop: I7, prop2: C7}}*/",
+            "var r1;",
+            "/** @type {{prop: C7, prop2: C7, prop3: C7}} */",
+            "var r2;",
+            "r1 = r2;"));
+  }
+
+  /**
+   * test structural interface matching for a combination of
+   * ordinary function types and record types
+   */
+  public void testStructuralInterfaceMatching36_2() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(this:C5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:I5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {{fun: function(C7):I7, prop: {prop: I7}}} */",
+            " var com1;",
+            "/** @type {{fun: function(I7):C7, prop: {prop: C7}}} */",
+            "var com2;",
+            "",
+            "com1 = com2;"));
+  }
+
+  /**
+   * test structural interface matching for a combination of
+   * ordinary function types and record types
+   */
+  public void testStructuralInterfaceMatching36_3() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(this:C5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:I5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {{fun: function(C7):I7, prop: {prop: I7}}} */",
+            " var com1;",
+            "/** @type {{fun: function(I7):C7, prop: {prop: C7}}} */",
+            "var com2;",
+            "",
+            "com1 = com2;"));
+  }
+
+  /**
+   * test structural interface matching for a combination of
+   * ordinary function types and record types
+   * here C7 does not structurally match I7
+   */
+  public void testStructuralInterfaceMatching37() throws Exception {
+    testTypesWithExtraExterns(
+        // the type structure of I5 and C5 are different
+        LINE_JOINER.join(
+            EXTERNS_FOR_LONG_NONMATCHING_CHAIN,
+            "/** @record */",
+            "function I7() {}",
+            "/** @type{function(this:C5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:I5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {{fun: function(C7):I7, prop: {prop: I7}}} */",
+            "var com1;",
+            "/** @type {{fun: function(I7):C7, prop: {prop: C7}}} */",
+            "var com2;",
+            "",
+            "com1 = com2;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : {fun: function((I7|null)): (C7|null), prop: {prop: (C7|null)}}",
+            "required: {fun: function((C7|null)): (I7|null), prop: {prop: (I7|null)}}",
+            "missing : []",
+        "mismatch: [fun,prop]"));
+  }
+
+  /**
+   * test structural interface matching for object literals
+   */
+  public void testStructuralInterfaceMatching39() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function I2() {}",
+            "/** @type {number} */",
+            "I2.prototype.length;"),
+        LINE_JOINER.join(
+            "/** @type {I2} */",
+            "var o1 = {length : 'test'};"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : {length: string}",
+            "required: (I2|null)"));
+  }
+
+  /**
+   * test structural interface matching for object literals
+   */
+  public void testStructuralInterfaceMatching40() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function I2() {}",
+            "/** @type {number} */",
+            "I2.prototype.length;"),
+        LINE_JOINER.join(
+            "/** @type {I2} */",
+            "var o1 = {length : 123};"));
+  }
+
+  /**
+   * test structural interface matching for object literals
+   */
+  public void testStructuralInterfaceMatching40_1() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function I2() {}",
+            "/** @type {number} */",
+            "I2.prototype.length;"),
+        LINE_JOINER.join(
+            "/** @type {I2} */",
+            "var o1 = {length : 123};"));
+  }
+
+  /**
+   * test structural interface matching for object literals
+   */
+  public void testStructuralInterfaceMatching41() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function I2() {}",
+            "/** @type {number} */",
+            "I2.prototype.length;"),
+        LINE_JOINER.join(
+            "/** @type {I2} */",
+            "var o1 = {length : 123};",
+            "/** @type {I2} */",
+            "var i;",
+            "i = o1;"));
+  }
+
+  /**
+   * test structural interface matching for object literals
+   */
+  public void testStructuralInterfaceMatching41_1() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function I2() {}",
+            "/** @type {number} */",
+            "I2.prototype.length;"),
+        LINE_JOINER.join(
+            "/** @type {I2} */",
+            "var o1 = {length : 123};",
+            "/** @type {I2} */",
+            "var i;",
+            "i = o1;"));
+  }
+
+  /**
+   * test structural interface matching for object literals
+   */
+  public void testStructuralInterfaceMatching42() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function I2() {}",
+            "/** @type {number} */",
+            "I2.prototype.length;"),
+        LINE_JOINER.join(
+            "/** @type {{length: number}} */",
+            "var o1 = {length : 123};",
+            "/** @type {I2} */",
+            "var i;",
+            "i = o1;"));
+  }
+
+  /**
+   * test structural interface matching for object literals
+   */
+  public void testStructuralInterfaceMatching43() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function I2() {}",
+            "/** @type {number} */",
+            "I2.prototype.length;"),
+        LINE_JOINER.join(
+            "var o1 = {length : 123};",
+            "/** @type {I2} */",
+            "var i;",
+            "i = o1;"));
+  }
+
+  public void testStructuralInterfaceMatching44() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */ function I() {}",
+            "/** @type {!Function} */ I.prototype.removeEventListener;",
+            "/** @type {!Function} */ I.prototype.addEventListener;",
+            "/** @constructor */ function C() {}",
+            "/** @type {!Function} */ C.prototype.addEventListener;"),
+        LINE_JOINER.join(
+            "/** @param {C|I} x */",
+            "function f(x) { x.addEventListener(); }",
+            "f(new C());"));
+  }
+
+  /**
+   * Currently, the structural interface matching does not support structural
+   * matching for template types
+   * Using @template @interfaces requires @implements them explicitly.
+   */
+  public void testStructuralInterfaceMatching45() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/**",
+            " * @record",
+            " * @template X",
+            " */",
+            "function I() {}",
+            "/** @constructor */",
+            "function C() {}",
+            "var /** !I */ i = new C;"));
+  }
+
+  public void testStructuralInterfaceMatching46() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @interface */",
+            "function I2() {}",
+            "/**",
+            " * @interface",
+            " * @extends {I2}",
+            " */",
+            "function I3() {}",
+            "/**",
+            " * @record",
+            " * @extends {I3}",
+            " */",
+            "function I4() {}",
+            "/** @type {I4} */",
+            "var i4;",
+            "/** @type {I2} */",
+            "var i2;",
+            "i4 = i2;"));
+  }
+
+  public void testStructuralInterfaceMatching47() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @interface */",
+            "function I2() {}",
+            "/**",
+            " * @interface",
+            " * @extends {I2}",
+            " */",
+            "function I3() {}",
+            "/**",
+            " * @record",
+            " * @extends {I3}",
+            " */",
+            "function I4() {}"),
+        LINE_JOINER.join(
+            "/** @type {I4} */",
+            "var i4;",
+            "/** @type {I2} */",
+            "var i2;",
+            "i4 = i2;"));
+  }
+
+  public void testStructuralInterfaceMatching48() throws Exception {
+    testTypesWithExtraExterns(
+        "",
+        LINE_JOINER.join(
+            "/** @interface */",
+            "function I2() {}",
+            "/**",
+            " * @record",
+            " * @extends {I2}",
+            " */",
+            "function I3() {}",
+            "/** @type {I3} */",
+            "var i3;",
+            "/** @type {I2} */",
+            "var i2;",
+            "i3 = i2;"));
+  }
+
+  public void testStructuralInterfaceMatching49() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @interface */",
+            "function I2() {}",
+            "/**",
+            " * @record",
+            " * @extends {I2}",
+            " */",
+            "function I3() {}"),
+        LINE_JOINER.join(
+            "/** @type {I3} */",
+            "var i3;",
+            "/** @type {I2} */",
+            "var i2;",
+            "i3 = i2;"));
+  }
+
+  public void testStructuralInterfaceMatching49_2() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function I2() {}",
+            "/**",
+            " * @record",
+            " * @extends {I2}",
+            " */",
+            "function I3() {}"),
+        LINE_JOINER.join(
+            "/** @type {I3} */",
+            "var i3;",
+            "/** @type {I2} */",
+            "var i2;",
+            "i3 = i2;"));
+  }
+
+  public void testStructuralInterfaceMatching50() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @interface */",
+            "function I2() {}",
+            "/**",
+            " * @record",
+            " * @extends {I2}",
+            " */",
+            "function I3() {}"),
+        LINE_JOINER.join(
+            "/** @type {I3} */",
+            "var i3;",
+            "/** @type {{length : number}} */",
+            "var r = {length: 123};",
+            "i3 = r;"));
+  }
+
+  public void testStructuralInterfaceMatching1_1() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @interface */",
+            "function Interface1() {}",
+            "/** @type {number} */",
+            "Interface1.prototype.length;",
+            "",
+            "/** @constructor */",
+            "function C1() {}",
+            "/** @type {number} */",
+            "C1.prototype.length;"),
+        LINE_JOINER.join(
+            "/** @type{Interface1} */",
+            "var obj1;",
+            "/** @type{C1} */",
+            "var obj2 = new C1();",
+            "obj1 = obj2;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : (C1|null)",
+            "required: (Interface1|null)"));
+  }
+
+  /**
+   * structural interface matching will also be able to
+   * structurally match ordinary function types
+   * check if the return types of the ordinary function types match
+   * (should not match, since I7 is declared with @interface)
+   */
+  public void testStructuralInterfaceMatching22_2() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            EXTERNS_FOR_LONG_MATCHING_CHAIN_RECORD,
+            "/** @interface */",
+            "function I7() {}",
+            "/** @type{function(): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : (C7|null)",
+            "required: (I7|null)"));
+  }
+
+  /**
+   * declared with @interface, no structural interface matching
+   */
+  public void testStructuralInterfaceMatching30_3() throws Exception {
+    testTypesWithExtraExterns(
+        // I5 and C5 shares the same type structure
+        LINE_JOINER.join(
+            "/** @interface */ function I5() {}",
+            "/** @constructor @implements {I5} */ function C5() {}",
+            "/** @interface */",
+            "function I7() {}",
+            "/** @type{function(this:C5, C5, C5, I5=): I5} */",
+            "I7.prototype.getElement = function(){};",
+            "",
+            "/** @constructor */",
+            "function C7() {}",
+            "/** @type{function(this:I5, I5, C5=, I5=): C5} */",
+            "C7.prototype.getElement = function(){};"),
+        LINE_JOINER.join(
+            "/** @type {I7} */",
+            "var i7;",
+            "/** @type {C7} */",
+            "var c7;",
+            "",
+            "i7 = c7;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : (C7|null)",
+            "required: (I7|null)"));
+  }
+
+  public void testRecordWithOptionalProperty() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/**  @constructor */ function Foo() {};",
+            "Foo.prototype.str = 'foo';",
+            "",
+            "var /** {str: string, opt_num: (undefined|number)} */ x = new Foo;"));
+  }
+
+  public void testRecordWithUnknownProperty() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/**  @constructor */ function Foo() {};",
+            "Foo.prototype.str = 'foo';",
+            "",
+            "var /** {str: string, unknown: ?} */ x = new Foo;"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : Foo",
+            "required: {str: string, unknown: ?}",
+            "missing : [unknown]",
+            "mismatch: []"
+        ));
+  }
+
+  public void testRecordWithOptionalUnknownProperty() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/**  @constructor */ function Foo() {};",
+            "Foo.prototype.str = 'foo';",
+            "",
+            "var /** {str: string, opt_unknown: (?|undefined)} */ x = new Foo;"));
+  }
+
+  public void testRecordWithTopProperty() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/**  @constructor */ function Foo() {};",
+            "Foo.prototype.str = 'foo';",
+            "",
+            "var /** {str: string, top: *} */ x = new Foo;"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : Foo",
+            "required: {str: string, top: *}",
+            "missing : [top]",
+            "mismatch: []"));
+  }
+
+  public void testStructuralInterfaceWithOptionalProperty() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record */ function Rec() {}",
+            "/** @type {string} */ Rec.prototype.str;",
+            "/** @type {(number|undefined)} */ Rec.prototype.opt_num;",
+            "",
+            "/** @constructor */ function Foo() {}",
+            "Foo.prototype.str = 'foo';",
+            "",
+            "var /** !Rec */ x = new Foo;"));
+  }
+
+  public void testStructuralInterfaceWithUnknownProperty() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record */ function Rec() {}",
+            "/** @type {string} */ Rec.prototype.str;",
+            "/** @type {?} */ Rec.prototype.unknown;",
+            "",
+            "/** @constructor */ function Foo() {}",
+            "Foo.prototype.str = 'foo';",
+            "",
+            "var /** !Rec */ x = new Foo;"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : Foo",
+            "required: Rec",
+            "missing : [unknown]",
+            "mismatch: []"));
+  }
+
+  public void testStructuralInterfaceWithOptionalUnknownProperty() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record */ function Rec() {}",
+            "/** @type {string} */ Rec.prototype.str;",
+            "/** @type {?|undefined} */ Rec.prototype.opt_unknown;",
+            "",
+            "/** @constructor */ function Foo() {}",
+            "Foo.prototype.str = 'foo';",
+            "",
+            "var /** !Rec */ x = new Foo;"));
+  }
+
+  public void testOptionalUnknownIsAssignableToUnknown() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "function f(/** (undefined|?) */ opt_unknown) {",
+            "  var /** ? */ unknown = opt_unknown;",
+            "}"));
+  }
+
+  public void testStructuralInterfaceWithTopProperty() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record */ function Rec() {}",
+            "/** @type {string} */ Rec.prototype.str;",
+            "/** @type {*} */ Rec.prototype.top;",
+            "",
+            "/** @constructor */ function Foo() {}",
+            "Foo.prototype.str = 'foo';",
+            "",
+            "var /** !Rec */ x = new Foo;"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : Foo",
+            "required: Rec",
+            "missing : [top]",
+            "mismatch: []"));
+  }
+
+  public void testStructuralInterfaceCycleDoesntCrash() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/**  @record */ function Foo() {};",
+            "/**  @return {MutableFoo} */ Foo.prototype.toMutable;",
+            "/**  @record */ function MutableFoo() {};",
+            "/**  @param {Foo} from */ MutableFoo.prototype.copyFrom;",
+            "",
+            "/**  @record */ function Bar() {};",
+            "/**  @return {MutableBar} */ Bar.prototype.toMutable;",
+            "/**  @record */ function MutableBar() {};",
+            "/**  @param {Bar} from */ MutableBar.prototype.copyFrom;",
+            "",
+            "/** @constructor @implements {MutableBar} */ function MutableBarImpl() {};",
+            "/** @override */ MutableBarImpl.prototype.copyFrom = function(from) {};",
+            "/** @constructor  @implements {MutableFoo} */ function MutableFooImpl() {};",
+            "/** @override */ MutableFooImpl.prototype.copyFrom = function(from) {};"));
+  }
+
+  public void testStructuralInterfacesMatchOwnProperties1() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record */ function WithProp() {}",
+            "/** @type {number} */ WithProp.prototype.prop;",
+            "",
+            "/** @constructor */",
+            "function Foo() {",
+            "  /** @type {number} */ this.prop = 5;",
+            "}",
+            "var /** !WithProp */ wp = new Foo;"));
+  }
+
+  public void testStructuralInterfacesMatchOwnProperties2() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record */ function WithProp() {}",
+            "/** @type {number} */ WithProp.prototype.prop;",
+            "",
+            "/** @constructor */",
+            "function Foo() {",
+            "  /** @type {number} */ this.oops = 5;",
+            "}",
+            "var /** !WithProp */ wp = new Foo;"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : Foo",
+            "required: WithProp",
+            "missing : [prop]",
+            "mismatch: []"));
+  }
+
+  public void testStructuralInterfacesMatchOwnProperties3() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record */ function WithProp() {}",
+            "/** @type {number} */ WithProp.prototype.prop;",
+            "",
+            "/** @constructor */",
+            "function Foo() {",
+            "  /** @type {string} */ this.prop = 'str';",
+            "}",
+            "var /** !WithProp */ wp = new Foo;"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : Foo",
+            "required: WithProp",
+            "missing : []",
+            "mismatch: [prop]"));
+  }
+
+
+  public void testStructuralInterfacesMatchFunctionNamespace1() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record */ function WithProp() {}",
+            "/** @type {number} */ WithProp.prototype.prop;",
+            "",
+            "var ns = function() {};",
+            "/** @type {number} */ ns.prop;",
+            "var /** !WithProp */ wp = ns;"));
+  }
+
+  public void testStructuralInterfacesMatchFunctionNamespace2() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record */ function WithProp() {}",
+            "/** @type {number} */ WithProp.prototype.prop;",
+            "",
+            "var ns = function() {};",
+            "/** @type {number} */ ns.oops;",
+            "var /** !WithProp */ wp = ns;"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : function(): undefined",
+            "required: WithProp",
+            "missing : [prop]",
+            "mismatch: []"));
+  }
+
+  public void testStructuralInterfacesMatchFunctionNamespace3() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record */ function WithProp() {}",
+            "/** @type {number} */ WithProp.prototype.prop;",
+            "",
+            "var ns = function() {};",
+            "/** @type {string} */ ns.prop;",
+            "var /** !WithProp */ wp = ns;"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : function(): undefined",
+            "required: WithProp",
+        "missing : []",
+        "mismatch: [prop]"));
+  }
+
+  public void testRecursiveTemplatizedStructuralInterface() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/**",
+            " * @record",
+            " * @template T",
+            " */",
+            "var Rec = function() { };",
+            "/** @type {!Rec<T>} */",
+            "Rec.prototype.p;",
+            "",
+            "/**",
+            " * @constructor @implements {Rec<T>}",
+            " * @template T",
+            " */",
+            "var Foo = function() {};",
+            "/** @override */",
+            "Foo.prototype.p = new Foo;"));
+  }
+
+
+  public void testCovarianceForRecordType1() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C() {}",
+            "/** @constructor ",
+            "  * @extends {C} ",
+            "  */",
+            "function C2() {}"),
+        LINE_JOINER.join(
+            "/** @type {{prop: C}} */",
+            "var r1;",
+            "/** @type {{prop: C2}} */",
+            "var r2;",
+            "r1 = r2;"));
+  }
+
+  public void testCovarianceForRecordType2() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C() {}",
+            "/** @constructor ",
+            "  * @extends {C} ",
+            "  */",
+            "function C2() {}"),
+        LINE_JOINER.join(
+            "/** @type {{prop: C, prop2: C}} */",
+            "var r1;",
+            "/** @type {{prop: C2, prop2: C}} */",
+            "var r2;",
+            "r1 = r2;"));
+  }
+
+  public void testCovarianceForRecordType3() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C() {}",
+            "/** @constructor @extends {C} */",
+            "function C2() {}"),
+        LINE_JOINER.join(
+            "/** @type {{prop: C}} */",
+            "var r1;",
+            "/** @type {{prop: C2, prop2: C}} */",
+            "var r2;",
+            "r1 = r2;"));
+  }
+
+  public void testCovarianceForRecordType4() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C() {}",
+            "/** @constructor @extends {C} */",
+            "function C2() {}"),
+        LINE_JOINER.join(
+            "/** @type {{prop: C, prop2: C}} */",
+            "var r1;",
+            "/** @type {{prop: C2}} */",
+            "var r2;",
+            "r1 = r2;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : {prop: (C2|null)}",
+            "required: {prop: (C|null), prop2: (C|null)}",
+            "missing : [prop2]",
+            "mismatch: []"));
+  }
+
+  public void testCovarianceForRecordType5() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C() {}",
+            "/** @constructor */",
+            "function C2() {}"),
+        LINE_JOINER.join(
+            "/** @type {{prop: C}} */",
+            "var r1;",
+            "/** @type {{prop: C2}} */",
+            "var r2;",
+            "r1 = r2;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : {prop: (C2|null)}",
+            "required: {prop: (C|null)}",
+            "missing : []",
+            "mismatch: [prop]"));
+  }
+
+  public void testCovarianceForRecordType6() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C() {}",
+            "/** @constructor @extends {C} */",
+            "function C2() {}"),
+        LINE_JOINER.join(
+            "/** @type {{prop: C2}} */",
+            "var r1;",
+            "/** @type {{prop: C}} */",
+            "var r2;",
+            "r1 = r2;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : {prop: (C|null)}",
+            "required: {prop: (C2|null)}",
+            "missing : []",
+            "mismatch: [prop]"));
+  }
+
+  public void testCovarianceForRecordType7() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C() {}",
+            "/** @constructor @extends {C} */",
+            "function C2() {}"),
+        LINE_JOINER.join(
+            "/** @type {{prop: C2, prop2: C2}} */",
+            "var r1;",
+            "/** @type {{prop: C2, prop2: C}} */",
+            "var r2;",
+            "r1 = r2;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : {prop: (C2|null), prop2: (C|null)}",
+            "required: {prop: (C2|null), prop2: (C2|null)}",
+            "missing : []",
+            "mismatch: [prop2]"));
+  }
+
+  public void testCovarianceForRecordType8() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function Foo(){}",
+            "/** @type {number} */",
+            "Foo.prototype.x = 5",
+            "/** @type {string} */",
+            "Foo.prototype.y = 'str'"),
+        LINE_JOINER.join(
+            "/** @type {{x: number, y: string}} */",
+            "var r1 = {x: 1, y: 'value'};",
+            "",
+            "/** @type {!Foo} */",
+            "var f = new Foo();",
+            "r1 = f;"));
+  }
+
+  public void testCovarianceForRecordType9() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function Foo(){}",
+            "/** @type {number} */",
+            "Foo.prototype.x1 = 5",
+            "/** @type {string} */",
+            "Foo.prototype.y = 'str'"),
+        LINE_JOINER.join(
+            "/** @type {{x: number, y: string}} */",
+            "var r1 = {x: 1, y: 'value'};",
+            "",
+            "/** @type {!Foo} */",
+            "var f = new Foo();",
+            "f = r1;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : {x: number, y: string}",
+            "required: Foo"));
+  }
+
+  public void testCovarianceForRecordType10() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function Foo() {}",
+            "/** @type {{x: !Foo}} */",
+            "Foo.prototype.x = {x: new Foo()};"),
+        LINE_JOINER.join(
+            "/** @type {!Foo} */",
+            "var o = new Foo();",
+            "",
+            "/** @type {{x: !Foo}} */",
+            "var r = {x : new Foo()};",
+            "r = o;"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : Foo",
+            "required: {x: Foo}",
+            "missing : []",
+            "mismatch: [x]"));
+  }
+
+  public void testCovarianceForRecordType11() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @interface */",
+            "function Foo() {}",
+            "/** @constructor @implements {Foo} */",
+            "function Bar1() {}",
+            "/** @return {number} */",
+            "Bar1.prototype.y = function(){return 1;};",
+            "/** @constructor @implements {Foo} */",
+            "function Bar() {}",
+            "/** @return {string} */",
+            "Bar.prototype.y = function(){return 'test';};"),
+        LINE_JOINER.join(
+            "function fun(/** Foo */f) {",
+            "  f.y();",
+            "}",
+            "fun(new Bar1())",
+            "fun(new Bar());"));
+  }
+
+  public void testCovarianceForRecordType12() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @interface */",
+            "function Foo() {}",
+            "/** @constructor @implements {Foo} */",
+            "function Bar1() {}",
+            "/** @constructor @implements {Foo} */",
+            "function Bar() {}",
+            "/** @return {undefined} */",
+            "Bar.prototype.y = function(){};"),
+        LINE_JOINER.join(
+            "/** @type{Foo} */",
+            "var f = new Bar1();",
+            "f.y();"));
+  }
+
+  public void testCovarianceForRecordType13() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @interface */",
+            "function I() {}",
+            "/** @constructor @implements {I} */",
+            "function C() {}",
+            "/** @return {undefined} */",
+            "C.prototype.y = function(){};"),
+        LINE_JOINER.join(
+            "/** @type{{x: {obj: I}}} */",
+            "var ri;",
+            "ri.x.obj.y();"));
+  }
+
+  public void testCovarianceForRecordType14() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @interface */",
+            "function I() {}",
+            "/** @constructor */",
+            "function C() {}",
+            "/** @return {undefined} */",
+            "C.prototype.y = function(){};"),
+        LINE_JOINER.join(
+            "/** @type{({x: {obj: I}}|{x: {obj: C}})} */",
+            "var ri;",
+            "ri.x.obj.y();"));
+  }
+
+  public void testCovarianceForRecordType15() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C() {}",
+            "/** @return {undefined} */",
+            "C.prototype.y1 = function(){};",
+            "/** @constructor */",
+            "function C1() {}",
+            "/** @return {undefined} */",
+            "C1.prototype.y = function(){};"),
+        LINE_JOINER.join(
+            "/** @type{({x: {obj: C}}|{x: {obj: C1}})} */",
+            "var ri;",
+            "ri.x.obj.y1();",
+            "ri.x.obj.y();"));
+  }
+
+  public void testCovarianceForRecordType16() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C() {}",
+            "/** @return {number} */",
+            "C.prototype.y = function(){return 1;};",
+            "/** @constructor */",
+            "function C1() {}",
+            "/** @return {string} */",
+            "C1.prototype.y = function(){return 'test';};"),
+        LINE_JOINER.join(
+            "/** @type{({x: {obj: C}}|{x: {obj: C1}})} */",
+            "var ri;",
+            "ri.x.obj.y();"));
+  }
+
+  public void testCovarianceForRecordType17() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @interface */",
+            "function Foo() {}",
+            "/** @constructor @implements {Foo} */",
+            "function Bar1() {}",
+            "Bar1.prototype.y = function(){return {};};",
+            "/** @constructor @implements {Foo} */",
+            "function Bar() {}",
+            "/** @return {number} */",
+            "Bar.prototype.y = function(){return 1;};"),
+        LINE_JOINER.join(
+            "/** @type {Foo} */ var f;",
+            "f.y();"));
+  }
+
+  public void testCovarianceForRecordType18() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor*/",
+            "function Bar1() {}",
+            "/** @type {{x: number}} */",
+            "Bar1.prototype.prop;",
+            "/** @constructor */",
+            "function Bar() {}",
+            "/** @type {{x: number, y: number}} */",
+            "Bar.prototype.prop;"),
+        LINE_JOINER.join(
+            "/** @type {{x: number}} */ var f;",
+            "f.z;"));
+  }
+
+  public void testCovarianceForRecordType19() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function Bar1() {}",
+            "/** @type {number} */",
+            "Bar1.prototype.prop;",
+            "/** @type {number} */",
+            "Bar1.prototype.prop1;",
+            "/** @constructor */",
+            "function Bar2() {}",
+            "/** @type {number} */",
+            "Bar2.prototype.prop;"),
+        LINE_JOINER.join(
+            "/** @type {(Bar1|Bar2)} */ var b;",
+            "var x = b.prop1"));
+  }
+
+  public void testCovarianceForRecordType20() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function Bar1() {}",
+            "/** @type {number} */",
+            "Bar1.prototype.prop;",
+            "/** @type {number} */",
+            "Bar1.prototype.prop1;",
+            "/** @type {number} */",
+            "Bar1.prototype.prop2;"),
+        LINE_JOINER.join(
+            "/** @type {{prop2:number}} */ var c;",
+            "/** @type {(Bar1|{prop:number, prop2: number})} */ var b;",
+            // there should be no warning saying that
+            // prop2 is not defined on b;
+            "var x = b.prop2"));
+  }
+
+  public void testCovarianceForRecordType20_2() throws Exception {
+    testTypesWithExtraExterns(
+        "",
+        LINE_JOINER.join(
+            "/** @type {{prop2:number}} */ var c;",
+            "/** @type {({prop:number, prop1: number, prop2: number}|",
+            "{prop:number, prop2: number})} */ var b;",
+            // there should be no warning saying that
+            // prop2 is not defined on b;
+            "var x = b.prop2"));
+  }
+
+  public void testOptimizePropertyMap1() throws Exception {
+    // For non object-literal types such as Function, the behavior doesn't change.
+    // The stray property is added as unknown.
+    testTypes(LINE_JOINER.join(
+        "/** @return {!Function} */",
+        "function f() {",
+        "  var x = function() {};",
+        "  /** @type {number} */",
+        "  x.prop = 123;",
+        "  return x;",
+        "}",
+        "function g(/** !Function */ x) {",
+        "  var /** null */ n = x.prop;",
+        "}"));
+  }
+
+  public void testOptimizePropertyMap2() throws Exception {
+    // Don't add the inferred property to all Foo values.
+    testTypes(LINE_JOINER.join(
+        "/** @typedef {{a:number}} */",
+        "var Foo;",
+        "function f(/** !Foo */ x) {",
+        "  var y = x;",
+        "  /** @type {number} */",
+        "  y.b = 123;",
+        "}",
+        "function g(/** !Foo */ x) {",
+        "  var /** null */ n = x.b;",
+        "}"),
+        "Property b never defined on x");
+  }
+
+  public void testOptimizePropertyMap3() throws Exception {
+    // For @record types, add the stray property to the index as before.
+    testTypes(LINE_JOINER.join(
+        "/** @record */",
+        "function Foo() {}",
+        "/** @type {number} */",
+        "Foo.prototype.a;",
+        "function f(/** !Foo */ x) {",
+        "  var y = x;",
+        "  /** @type {number} */",
+        "  y.b = 123;",
+        "}",
+        "function g(/** !Foo */ x) {",
+        "  var /** null */ n = x.b;",
+        "}"));
+  }
+
+  public void testOptimizePropertyMap4() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "function f(x) {",
+        "  var y = { a: 1, b: 2 };",
+        "}",
+        "function g(x) {",
+        "  return x.b + 1;",
+        "}"));
+  }
+
+  public void testOptimizePropertyMap5() throws Exception {
+    // Tests that we don't declare the properties on Object (so they don't appear on
+    // all object types).
+    testTypes(LINE_JOINER.join(
+        "function f(x) {",
+        "  var y = { a: 1, b: 2 };",
+        "}",
+        "function g() {",
+        "  var x = { c: 123 };",
+        "  return x.a + 1;",
+        "}"),
+        "Property a never defined on x");
+  }
+
+  public void testOptimizePropertyMap6() throws Exception {
+    // The stray property doesn't appear on other inline record types.
+    testTypes(LINE_JOINER.join(
+        "function f(/** {a:number} */ x) {",
+        "  var y = x;",
+        "  /** @type {number} */",
+        "  y.b = 123;",
+        "}",
+        "function g(/** {c:number} */ x) {",
+        "  var /** null */ n = x.b;",
+        "}"),
+        "Property b never defined on x");
+  }
+
+  public void testOptimizePropertyMap7() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "function f() {",
+        "  var x = {a:1};",
+        "  x.b = 2;",
+        "}",
+        "function g() {",
+        "  var y = {a:1};",
+        "  return y.b + 1;",
+        "}"),
+        "Property b never defined on y");
+  }
+
+  public void testOptimizePropertyMap8() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "function f(/** {a:number, b:number} */ x) {}",
+        "function g(/** {c:number} */ x) {",
+        "  var /** null */ n = x.b;",
+        "}"),
+        "Property b never defined on x");
+  }
+
+  public void testOptimizePropertyMap9() throws Exception {
+    // Don't add the stray property to all types that meet with {a: number, c: string}.
+    testTypes(LINE_JOINER.join(
+        "/** @constructor */",
+        "function Foo() {",
+        "  this.a = 123;",
+        "}",
+        "function f(/** {a: number, c: string} */ x) {",
+        "  x.b = 234;",
+        "}",
+        "function g(/** !Foo */ x) {",
+        "  return x.b + 5;",
+        "}"),
+        "Property b never defined on Foo");
+  }
+
+  public void testCovarianceForRecordType21() throws Exception {
+    testTypesWithExtraExterns(
+        "",
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function Bar1() {};",
+            "/** @type {number} */",
+            "Bar1.prototype.propName;",
+            "/** @type {number} */",
+            "Bar1.prototype.propName1;",
+            "/** @type {{prop2:number}} */ var c;",
+            "/** @type {(Bar1|{propName:number, propName1: number})} */ var b;",
+            "var x = b.prop2;"),
+        "Property prop2 never defined on b");
+  }
+
+  public void testCovarianceForRecordType22() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function Bar() {}",
+            "/** @type {number} */",
+            "Bar.prototype.prop2;",
+            "/** @constructor */",
+            "function Bar1() {}",
+            "/** @type {number} */",
+            "Bar1.prototype.prop;",
+            "/** @type {number} */",
+            "Bar1.prototype.prop1;",
+            "/** @type {number} */",
+            "Bar1.prototype.prop2;"),
+        LINE_JOINER.join(
+            "/** @type {(Bar1|{prop:number, prop1: number})} */ var b;",
+            // there should be no warning saying that
+            // prop2 is not defined on b;
+            "var x = b.prop2"));
+  }
+
+  public void testCovarianceForRecordType23() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function A() {}",
+            "/** @constructor @extends{A} */",
+            "function B() {}",
+            "",
+            "/** @constructor */",
+            "function C() {}",
+            "/** @type {B} */",
+            "C.prototype.prop2;",
+            "/** @type {number} */",
+            "C.prototype.prop3;",
+            "",
+            "/** @constructor */",
+            "function D() {}",
+            "/** @type {number} */",
+            "D.prototype.prop;",
+            "/** @type {number} */",
+            "D.prototype.prop1;",
+            "/** @type {B} */",
+            "D.prototype.prop2;"),
+        LINE_JOINER.join(
+            "/** @type {{prop2: A}} */ var record;",
+            "var xhr = new C();",
+            "if (true) { xhr = new D(); }",
+            // there should be no warning saying that
+            // prop2 is not defined on b;
+            "var x = xhr.prop2"));
+  }
+
+  public void testCovarianceForRecordType24() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C() {}",
+            "",
+            "/** @type {!Function} */",
+            "C.prototype.abort = function() {};",
+            "",
+            "/** @type{number} */",
+            "C.prototype.test2 = 1;"),
+        LINE_JOINER.join(
+            "function f() {",
+            "  /** @type{{abort: !Function, count: number}} */",
+            "  var x;",
+            "}",
+            "",
+            "function f2() {",
+            "  /** @type{(C|{abort: Function})} */",
+            "  var y;",
+            "  y.abort();",
+            "}"));
+  }
+
+  public void testCovarianceForRecordType25() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C() {}",
+            "",
+            "/** @type {!Function} */",
+            "C.prototype.abort = function() {};",
+            "",
+            "/** @type{number} */",
+            "C.prototype.test2 = 1;"),
+        LINE_JOINER.join(
+            "function f() {",
+            "  /** @type{!Function} */ var f;",
+            "  var x = {abort: f, count: 1}",
+            "  return x;",
+            "}",
+            "",
+            "function f2() {",
+            "  /** @type{(C|{test2: number})} */",
+            "  var y;",
+            "  y.abort();",
+            "}"));
+  }
+
+  public void testCovarianceForRecordType26() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C() {}",
+            "",
+            "C.prototype.abort = function() {};",
+            "",
+            "/** @type{number} */",
+            "C.prototype.test2 = 1;"),
+        LINE_JOINER.join(
+            "function f() {",
+            "  /** @type{{abort: !Function}} */",
+            "  var x;",
+            "}",
+            "",
+            "function f2() {",
+            "  /** @type{(C|{test2: number})} */",
+            "  var y;",
+            "  /** @type {C} */ (y).abort();",
+            "}"));
+  }
+
+  public void testCovarianceForRecordType26AndAHalf() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C() {}",
+            "",
+            "C.prototype.abort = function() {};",
+            "",
+            "/** @type{number} */",
+            "C.prototype.test2 = 1;",
+            "var g = function /** !C */(){};"),
+        LINE_JOINER.join(
+            "function f() {",
+            "  /** @type{{abort: !Function}} */",
+            "  var x;",
+            "}",
+            "function f2() {",
+            "  var y = g();",
+            "  y.abort();",
+            "}"));
+  }
+
+  public void testCovarianceForRecordType27() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C(){}",
+            "/** @constructor @extends {C} */",
+            "function C2() {}"),
+        LINE_JOINER.join(
+            "/** @type {{prop2:C}} */ var c;",
+            "/** @type {({prop:number, prop1: number, prop2: C}|",
+            "{prop:number, prop1: number, prop2: number})} */ var b;",
+            "var x = b.prop2;"));
+  }
+
+  public void testCovarianceForRecordType28() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function XMLHttpRequest() {}",
+            "/**",
+            " * @return {undefined}",
+            " */",
+            "XMLHttpRequest.prototype.abort = function() {};",
+            "",
+            "/** @constructor */",
+            "function XDomainRequest() {}",
+            "",
+            "XDomainRequest.prototype.abort = function() {};"),
+        LINE_JOINER.join(
+            "/**",
+            " * @typedef {{abort: !Function, close: !Function}}",
+            " */",
+            "var WritableStreamSink;",
+            "function sendCrossOrigin() {",
+            "  var xhr = new XMLHttpRequest;",
+            "  xhr = new XDomainRequest;",
+            "  return function() {",
+            "    xhr.abort();",
+            "  };",
+            "}"));
+  }
+
+  public void testCovarianceForRecordType29() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function XMLHttpRequest() {}",
+            "/**",
+            " * @type {!Function}",
+            " */",
+            "XMLHttpRequest.prototype.abort = function() {};",
+            "",
+            "/** @constructor */",
+            "function XDomainRequest() {}",
+            "/**",
+            " * @type {!Function}",
+            " */",
+            "XDomainRequest.prototype.abort = function() {};"),
+        LINE_JOINER.join(
+            "/**",
+            " * @typedef {{close: !Function, abort: !Function}}",
+            " */",
+            "var WritableStreamSink;",
+            "function sendCrossOrigin() {",
+            "  var xhr = new XMLHttpRequest;",
+            "  xhr = new XDomainRequest;",
+            "  return function() {",
+            "    xhr.abort();",
+            "  };",
+            "}"));
+  }
+
+  public void testCovarianceForRecordType30() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function A() {}"
+            ),
+        LINE_JOINER.join(
+            "/**",
+            " * @type {{prop1: (A)}}",
+            " */",
+            "var r1;",
+            "/**",
+            " * @type {{prop1: (A|undefined)}}",
+            " */",
+            "var r2;",
+            "r1 = r2"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : {prop1: (A|null|undefined)}",
+            "required: {prop1: (A|null)}",
+            "missing : []",
+            "mismatch: [prop1]"));
+  }
+
+  public void testCovarianceForRecordType31() throws Exception {
+    testTypesWithExtraExterns(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function A() {}"
+            ),
+        LINE_JOINER.join(
+            "/**",
+            " * @type {{prop1: (A|null)}}",
+            " */",
+            "var r1;",
+            "/**",
+            " * @type {{prop1: (A|null|undefined)}}",
+            " */",
+            "var r2;",
+            "r1 = r2"),
+        LINE_JOINER.join(
+            "assignment",
+            "found   : {prop1: (A|null|undefined)}",
+            "required: {prop1: (A|null)}",
+            "missing : []",
+            "mismatch: [prop1]"));
+  }
+
+  public void testDuplicateVariableDefinition1() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record */",
+            "function A() {}",
+            "/** @type {number} */",
+            "A.prototype.prop;",
+            "/** @record */",
+            "function B() {}",
+            "/** @type {number} */",
+            "B.prototype.prop;",
+            "/** @constructor */",
+            "function C() {}",
+            "/** @type {number} */",
+            "C.prototype.prop;",
+            "/** @return {(A|B|C)} */",
+            "function fun () {}",
+            "/** @return {(B|A|C)} */",
+            "function fun () {}"),
+        "variable fun redefined, original definition at [testcode]:14");
+  }
+
+  public void testDuplicateVariableDefinition3() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "var ns = {};",
+            "/** @type {{x:number}} */ ns.x;",
+            "/** @type {{x:number}} */ ns.x;"));
+  }
+
+  public void testDuplicateVariableDefinition3_1() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "var ns = {};",
+            "/** @type {{x:number}} */ ns.x;",
+            "/** @type {{x:string}} */ ns.x;"),
+        "variable ns.x redefined with type {x: string}, original definition "
+        + "at [testcode]:2 with type {x: number}");
+  }
+
+  public void testDuplicateVariableDefinition3_2() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "var ns = {};",
+            "/** @type {{x:number}} */ ns.x;",
+            "/** @type {{x:number, y:boolean}} */ ns.x;"),
+        "variable ns.x redefined with type {x: number, y: boolean}, "
+        + "original definition at [testcode]:2 with type {x: number}");
+  }
+
+  public void testDuplicateVariableDefinition4() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "var ns = {};",
+            "/** @record */ function rec3(){}",
+            "/** @record */ function rec4(){}",
+            "/** @type {!rec3} */ ns.x;",
+            "/** @type {!rec4} */ ns.x;"));
+  }
+
+  public void testDuplicateVariableDefinition5() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "var ns = {};",
+            "/** @record */ function rec3(){}",
+            "/** @record */ function rec4(){}",
+            "/** @type {number} */ rec4.prototype.prop;",
+            "/** @type {!rec3} */ ns.x;",
+            "/** @type {!rec4} */ ns.x;"),
+        "variable ns.x redefined with type rec4, original definition at "
+        + "[testcode]:5 with type rec3");
+  }
+
+  public void testDuplicateVariableDefinition6() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "var ns = {};",
+            "/** @record */ function rec3(){}",
+            "/** @type {number} */ rec3.prototype.prop;",
+            "/** @record */ function rec4(){}",
+            "/** @type {!rec3} */ ns.x;",
+            "/** @type {!rec4} */ ns.x;"),
+        "variable ns.x redefined with type rec4, original definition at "
+        + "[testcode]:5 with type rec3");
+  }
+
+  /**
+   * check bug fix 22713201 (the first case)
+   */
+  public void testDuplicateVariableDefinition7() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @typedef {{prop:TD2}} */",
+            "  var TD1;",
+            "",
+            "  /** @typedef {{prop:TD1}} */",
+            "  var TD2;",
+            "",
+            "  var /** TD1 */ td1;",
+            "  var /** TD2 */ td2;",
+            "",
+            "  td1 = td2;"));
+  }
+
+  public void testDuplicateVariableDefinition8() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "var ns = {}",
+            "/** @record */ function rec(){}",
+            "/** @type {number} */ rec.prototype.prop;",
+            "",
+            "/** @type {!rec} */ ns.x;",
+            "/** @type {{prop:number}} */ ns.x;",
+            "",
+            "/** @type {{prop:number}} */ ns.y;",
+            "/** @type {!rec} */ ns.y;"));
+  }
+
+  public void testDuplicateVariableDefinition8_2() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "var ns = {}",
+            "/** @record */ function rec(){}",
+            "/** @type {number} */ rec.prototype.prop;",
+            "",
+            "/** @type {!rec} */ ns.x;",
+            "/** @type {{prop:string}} */ ns.x;",
+            "",
+            "/** @type {{prop:number}} */ ns.y;",
+            "/** @type {!rec} */ ns.y;"),
+        "variable ns.x redefined with type {prop: string}, original "
+        + "definition at [testcode]:5 with type rec");
+  }
+
+  public void testDuplicateVariableDefinition8_3() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "var ns = {}",
+            "/** @record */ function rec(){}",
+            "/** @type {string} */ rec.prototype.prop;",
+            "",
+            "/** @type {!rec} */ ns.x;",
+            "/** @type {{prop:string}} */ ns.x;",
+            "",
+            "/** @type {{prop:number}} */ ns.y;",
+            "/** @type {!rec} */ ns.y;"),
+        "variable ns.y redefined with type rec, original definition at "
+        + "[testcode]:8 with type {prop: number}");
+  }
+
+  public void testDuplicateVariableDefinition8_4() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record @template T */ function I() {}",
+            "/** @type {T} */ I.prototype.prop;",
+            "var ns = {}",
+            "/** @record */ function rec(){}",
+            "/** @type {I} */ rec.prototype.prop;",
+            "",
+            "/** @type {!rec} */ ns.x;",
+            "/** @type {{prop:I}} */ ns.x;"));
+  }
+
+  public void testDuplicateVariableDefinition8_5() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record @template T */ function I() {}",
+            "/** @type {T} */ I.prototype.prop;",
+            "var ns = {}",
+            "/** @record */ function rec(){}",
+            "/** @type {I<number>} */ rec.prototype.prop;",
+            "",
+            "/** @type {!rec} */ ns.x;",
+            "/** @type {{prop:I<number>}} */ ns.x;"));
+  }
+
+  public void testDuplicateVariableDefinition8_6() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record @template T */ function I() {}",
+            "/** @type {T} */ I.prototype.prop;",
+            "var ns = {}",
+            "/** @record */ function rec(){}",
+            "/** @type {I<number>} */ rec.prototype.prop;",
+            "",
+            "/** @type {!rec} */ ns.x;",
+            "/** @type {{prop:I<string>}} */ ns.x;"),
+        "variable ns.x redefined with type {prop: (I<string>|null)}, "
+        + "original definition at [testcode]:7 with type rec");
+  }
+
+  // should have no warning, need to handle equivalence checking for
+  // structural types with template types
+  public void testDuplicateVariableDefinition8_7() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @record @template T */",
+            "function rec(){}",
+            "/** @type {T} */ rec.prototype.value;",
+            "",
+            "/** @type {rec<string>} */ ns.x;",
+            "/** @type {{value: string}} */ ns.x;"),
+        "variable ns.x redefined with type {value: string}, "
+        + "original definition at [testcode]:5 with type (null|rec<string>)");
+  }
+
+  public void testModuloNullUndefThatWorkedWithoutSpecialSubtypingRules1() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/** @constructor */",
+        "function Foo() {}",
+        "function f(/** function(?Foo, !Foo) */ x) {",
+        "  return /** @type {function(!Foo, ?Foo)} */ (x);",
+        "}"));
+  }
+
+  public void testModuloNullUndefThatWorkedWithoutSpecialSubtypingRules2() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "/** @constructor */",
+        "function Foo() {}",
+        "function f(/** !Array<!Foo> */ to, /** !Array<?Foo> */ from) {",
+        "  to = from;",
+        "}"));
+  }
+
+  public void testModuloNullUndefThatWorkedWithoutSpecialSubtypingRules3() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "function f(/** ?Object */ x) {",
+        "  return {} instanceof x;",
+        "}"));
+  }
+
+  public void testModuloNullUndefThatWorkedWithoutSpecialSubtypingRules4() throws Exception {
+    testTypes(LINE_JOINER.join(
+        "function f(/** ?Function */ x) {",
+        "  return x();",
+        "}"));
+  }
+
+  public void testEs5ClassExtendingEs6Class() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "class Foo {}",
+            "/** @constructor @extends {Foo} */ var Bar = function() {};"),
+        "ES5 class Bar cannot extend ES6 class Foo");
+  }
+
+  public void testEs5ClassExtendingEs6Class_noWarning() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "class A {}",
+            "/** @constructor @extends {A} */",
+            "const B = createSubclass(A);"));
+  }
+
+  public void testNonNullTemplatedThis() throws Exception {
+    testTypes(
+       LINE_JOINER.join(
+           "/** @constructor */",
+           "function C() {}",
+           "",
+           "/** ",
+           "  @return {THIS} ",
+           "  @this {THIS}",
+           "  @template THIS",
+           "*/",
+           "C.prototype.method = function() {};",
+           "",
+           "/** @return {C|null} */",
+           "function f() {",
+           "  return x;",
+           "};",
+           "",
+           "/** @type {string} */ var s = f().method();"),
+       "initializing variable\n" +
+       "found   : C\n" +
+       "required: string");
+  }
+
+  // Github issue #2222: https://github.com/google/closure-compiler/issues/2222
+  public void testSetPrototypeToNewInstance() throws Exception {
+    testTypes(
+        LINE_JOINER.join(
+            "/** @constructor */",
+            "function C() {}",
+            "C.prototype = new C;"));
+  }
+
+  public void testFilterNoResolvedType() throws Exception {
+    testClosureTypes(
+        LINE_JOINER.join(
+            "goog.forwardDeclare('Foo');",
+            "/**",
+            " * @param {boolean} pred",
+            " * @param {?Foo} x",
+            " */",
+            "function f(pred, x) {",
+            "  var y;",
+            "  if (pred) {",
+            "    y = null;",
+            "  } else {",
+            "    y = x;",
+            "  }",
+            "  var /** number */ z = y;",
+            "}"),
+        // Tests that the type of y is (NoResolvedType|null) and not (Foo|null)
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : (NoResolvedType|null)",
+            "required: number"));
+  }
+
+  public void testNoResolvedTypeDoesntCauseInfiniteLoop() throws Exception {
+    testClosureTypes(LINE_JOINER.join(
+        "goog.forwardDeclare('Foo');",
+        "goog.forwardDeclare('Bar');",
+        "/** @const */",
+        "var goog = {};",
+        "goog.forwardDeclare = function(x) {};",
+        "/** @const */",
+        "goog.asserts = {};",
+        "goog.asserts.assert = function(x, y) {};",
+        "/** @interface */",
+        "var Baz = function() {};",
+        "/** @return {!Bar} */",
+        "Baz.prototype.getBar = function() {};",
+        "/** @constructor */",
+        "var Qux = function() {",
+        "  /** @type {?Foo} */",
+        "  this.jobRuntimeTracker_ = null;",
+        "};",
+        "/** @param {!Baz} job */",
+        "Qux.prototype.runRenderJobs_ = function(job) {",
+        "  for (var i = 0; i < 10; i++) {",
+        "    if (this.jobRuntimeTracker_) {",
+        "      goog.asserts.assert(job.getBar, '');",
+        "    }",
+        "  }",
+        "};"),
+        null);
+  }
+
+  public void testb38182645() throws Exception {
+    testTypes(
+        LINE_JOINER.join("",
+            "/**",
+            " * @interface",
+            " * @template VALUE",
+            " */",
+            "function MyI() {}",
+            "",
+            "",
+            "/**",
+            " * @constructor",
+            " * @implements {MyI<K|V>}",
+            " * @template K, V",
+            " */",
+            "function MyMap() {}",
+            "",
+            "",
+            "/**",
+            " * @param {!MyMap<string, T>} map",
+            " * @return {T}",
+            " * @template T",
+            " */",
+            "function getValueFromNameAndMap(map) {",
+            "  return /** @type {?} */ (123);",
+            "}",
+            "var m = /** @type {!MyMap<string,number>} */ (new MyMap());",
+            "var /** null */ n = getValueFromNameAndMap(m);"),
+        LINE_JOINER.join(
+            "initializing variable",
+            "found   : number",
+            "required: null"));
+  }
+
+  private void testTypes(String js) {
     testTypes(js, (String) null);
   }
 
-  private void testTypes(String js, String description) throws Exception {
+  private void testTypes(String js, String description) {
     testTypes(js, description, false);
   }
 
-  private void testTypes(String js, DiagnosticType type) throws Exception {
+  private void testTypes(String js, DiagnosticType type) {
     testTypes(js, type, false);
   }
 
-  private void testClosureTypes(String js, String description)
-      throws Exception {
+  void testTypes(String js, String description, boolean isError) {
+    testTypes(DEFAULT_EXTERNS, js, description, isError);
+  }
+
+  void testTypes(
+      String externs, String js, String description, boolean isError) {
+    parseAndTypeCheck(externs, js);
+
+    JSError[] errors = compiler.getErrors();
+    if (description != null && isError) {
+      assertTrue("expected an error", errors.length > 0);
+      assertEquals(description, errors[0].description);
+      errors = Arrays.asList(errors).subList(1, errors.length).toArray(
+          new JSError[errors.length - 1]);
+    }
+    if (errors.length > 0) {
+      fail("unexpected error(s):\n" + LINE_JOINER.join(errors));
+    }
+
+    JSError[] warnings = compiler.getWarnings();
+    if (description != null && !isError) {
+      assertTrue("expected a warning", warnings.length > 0);
+      assertEquals(description, warnings[0].description);
+      warnings = Arrays.asList(warnings).subList(1, warnings.length).toArray(
+          new JSError[warnings.length - 1]);
+    }
+    if (warnings.length > 0) {
+      fail("unexpected warnings(s):\n" + LINE_JOINER.join(warnings));
+    }
+  }
+
+  void testTypes(String js, DiagnosticType diagnosticType, boolean isError) {
+    testTypes(DEFAULT_EXTERNS, js, diagnosticType, isError);
+  }
+
+  void testTypes(String externs, String js, DiagnosticType diagnosticType,
+      boolean isError) {
+    parseAndTypeCheck(externs, js);
+
+    JSError[] errors = compiler.getErrors();
+    if (diagnosticType != null && isError) {
+      assertTrue("expected an error", errors.length > 0);
+      assertEquals(diagnosticType, errors[0].getType());
+      errors = Arrays.asList(errors).subList(1, errors.length).toArray(
+          new JSError[errors.length - 1]);
+    }
+    if (errors.length > 0) {
+      fail("unexpected error(s):\n" + LINE_JOINER.join(errors));
+    }
+
+    JSError[] warnings = compiler.getWarnings();
+    if (diagnosticType != null && !isError) {
+      assertTrue("expected a warning", warnings.length > 0);
+      assertEquals(diagnosticType, warnings[0].getType());
+      warnings = Arrays.asList(warnings).subList(1, warnings.length).toArray(
+          new JSError[warnings.length - 1]);
+    }
+    if (warnings.length > 0) {
+      fail("unexpected warnings(s):\n" + LINE_JOINER.join(warnings));
+    }
+  }
+
+  void testTypes(String js, String[] warnings) {
+    Node n = compiler.parseTestCode(js);
+    assertEquals(0, compiler.getErrorCount());
+    Node externsNode = IR.root();
+    // create a parent node for the extern and source blocks
+    IR.root(externsNode, n);
+
+    makeTypeCheck().processForTesting(null, n);
+    assertEquals(0, compiler.getErrorCount());
+    if (warnings != null) {
+      assertEquals(warnings.length, compiler.getWarningCount());
+      JSError[] messages = compiler.getWarnings();
+      for (int i = 0; i < warnings.length && i < compiler.getWarningCount();
+           i++) {
+        assertEquals(warnings[i], messages[i].description);
+      }
+    } else {
+      assertEquals(0, compiler.getWarningCount());
+    }
+  }
+
+  private void testClosureTypes(String js, String description) {
     testClosureTypesMultipleWarnings(js,
         description == null ? null : ImmutableList.of(description));
   }
 
   private void testClosureTypesMultipleWarnings(
-      String js, List<String> descriptions) throws Exception {
+      String js, List<String> descriptions) {
     compiler.initOptions(compiler.getOptions());
     Node n = compiler.parseTestCode(js);
-    Node externs = new Node(Token.BLOCK);
-    Node externAndJsRoot = new Node(Token.BLOCK, externs, n);
-    externAndJsRoot.setIsSyntheticBlock(true);
+    Node externs = IR.root();
+    IR.root(externs, n);
 
     assertEquals("parsing error: " +
         Joiner.on(", ").join(compiler.getErrors()),
         0, compiler.getErrorCount());
 
     // For processing goog.addDependency for forward typedefs.
-    new ProcessClosurePrimitives(compiler, null, CheckLevel.ERROR, false)
-        .process(null, n);
+    new ProcessClosurePrimitives(compiler, null, CheckLevel.ERROR, false).process(externs, n);
 
     new TypeCheck(compiler,
         new ClosureReverseAbstractInterpreter(registry).append(
@@ -13444,73 +17953,17 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     }
   }
 
-  void testTypes(String js, String description, boolean isError)
-      throws Exception {
-    testTypes(DEFAULT_EXTERNS, js, description, isError);
-  }
-
-  void testTypes(String externs, String js, String description, boolean isError)
-      throws Exception {
-    parseAndTypeCheck(externs, js);
-
-    JSError[] errors = compiler.getErrors();
-    if (description != null && isError) {
-      assertTrue("expected an error", errors.length > 0);
-      assertEquals(description, errors[0].description);
-      errors = Arrays.asList(errors).subList(1, errors.length).toArray(
-          new JSError[errors.length - 1]);
-    }
-    if (errors.length > 0) {
-      fail("unexpected error(s):\n" + Joiner.on("\n").join(errors));
-    }
-
-    JSError[] warnings = compiler.getWarnings();
-    if (description != null && !isError) {
-      assertTrue("expected a warning", warnings.length > 0);
-      assertEquals(description, warnings[0].description);
-      warnings = Arrays.asList(warnings).subList(1, warnings.length).toArray(
-          new JSError[warnings.length - 1]);
-    }
-    if (warnings.length > 0) {
-      fail("unexpected warnings(s):\n" + Joiner.on("\n").join(warnings));
-    }
-  }
-
-  void testTypes(String js, DiagnosticType diagnosticType, boolean isError)
-      throws Exception {
-    testTypes(DEFAULT_EXTERNS, js, diagnosticType, isError);
-  }
-
-  void testTypesWithExterns(String externs, String js) throws Exception {
+  void testTypesWithExterns(String externs, String js) {
     testTypes(externs, js, (String) null, false);
   }
 
-  void testTypes(
-      String externs, String js, DiagnosticType diagnosticType, boolean isError)
-      throws Exception {
-    parseAndTypeCheck(externs, js);
+  void testTypesWithExtraExterns(String externs, String js) {
+    testTypes(DEFAULT_EXTERNS + "\n" + externs, js, (String) null, false);
+  }
 
-    JSError[] errors = compiler.getErrors();
-    if (diagnosticType != null && isError) {
-      assertTrue("expected an error", errors.length > 0);
-      assertEquals(diagnosticType, errors[0].getType());
-      errors = Arrays.asList(errors).subList(1, errors.length).toArray(
-          new JSError[errors.length - 1]);
-    }
-    if (errors.length > 0) {
-      fail("unexpected error(s):\n" + Joiner.on("\n").join(errors));
-    }
-
-    JSError[] warnings = compiler.getWarnings();
-    if (diagnosticType != null && !isError) {
-      assertTrue("expected a warning", warnings.length > 0);
-      assertEquals(diagnosticType, warnings[0].getType());
-      warnings = Arrays.asList(warnings).subList(1, warnings.length).toArray(
-          new JSError[warnings.length - 1]);
-    }
-    if (warnings.length > 0) {
-      fail("unexpected warnings(s):\n" + Joiner.on("\n").join(warnings));
-    }
+  void testTypesWithExtraExterns(
+      String externs, String js, String description) {
+    testTypes(DEFAULT_EXTERNS + "\n" + externs, js, description, false);
   }
 
   /**
@@ -13532,63 +17985,55 @@ public final class TypeCheckTest extends CompilerTypeTestCase {
     return parseAndTypeCheckWithScope(DEFAULT_EXTERNS, js);
   }
 
-  private TypeCheckResult parseAndTypeCheckWithScope(
-      String externs, String js) {
+  private TypeCheckResult parseAndTypeCheckWithScope(String externs, String js) {
+    registry.clearNamedTypes();
+    registry.clearTemplateTypeNames();
     compiler.init(
         ImmutableList.of(SourceFile.fromCode("[externs]", externs)),
         ImmutableList.of(SourceFile.fromCode("[testcode]", js)),
         compiler.getOptions());
+    compiler.setFeatureSet(compiler.getFeatureSet().without(Feature.MODULES));
 
     Node n = compiler.getInput(new InputId("[testcode]")).getAstRoot(compiler);
     Node externsNode = compiler.getInput(new InputId("[externs]"))
         .getAstRoot(compiler);
-    Node externAndJsRoot = new Node(Token.BLOCK, externsNode, n);
-    externAndJsRoot.setIsSyntheticBlock(true);
+    Node externAndJsRoot = IR.root(externsNode, n);
+    compiler.jsRoot = n;
+    compiler.externsRoot = externsNode;
+    compiler.externAndJsRoot = externAndJsRoot;
 
     assertEquals("parsing error: " +
         Joiner.on(", ").join(compiler.getErrors()),
         0, compiler.getErrorCount());
+
+    if (compiler.getOptions().needsTranspilationFrom(FeatureSet.ES6)) {
+      List<PassFactory> passes = new ArrayList<>();
+      TranspilationPasses.addEs6ModulePass(passes);
+      TranspilationPasses.addEs2017Passes(passes);
+      TranspilationPasses.addEs2016Passes(passes);
+      TranspilationPasses.addEs6EarlyPasses(passes);
+      TranspilationPasses.addEs6LatePasses(passes);
+      TranspilationPasses.addRewritePolyfillPass(passes);
+      PhaseOptimizer phaseopt = new PhaseOptimizer(compiler, null);
+      phaseopt.consume(passes);
+      phaseopt.process(externsNode, externAndJsRoot);
+    }
 
     TypedScope s = makeTypeCheck().processForTesting(externsNode, n);
     return new TypeCheckResult(n, s);
   }
 
   private Node typeCheck(Node n) {
-    Node externsNode = new Node(Token.BLOCK);
-    Node externAndJsRoot = new Node(Token.BLOCK, externsNode, n);
-    externAndJsRoot.setIsSyntheticBlock(true);
+    Node externsNode = IR.root();
+    Node externAndJsRoot = IR.root(externsNode);
+    externAndJsRoot.addChildToBack(n);
 
     makeTypeCheck().processForTesting(null, n);
     return n;
   }
 
   private TypeCheck makeTypeCheck() {
-    return new TypeCheck(
-        compiler,
-        new SemanticReverseAbstractInterpreter(registry),
-        registry,
-        reportMissingOverrides);
-  }
-
-  void testTypes(String js, String[] warnings) throws Exception {
-    Node n = compiler.parseTestCode(js);
-    assertEquals(0, compiler.getErrorCount());
-    Node externsNode = new Node(Token.BLOCK);
-    // create a parent node for the extern and source blocks
-    new Node(Token.BLOCK, externsNode, n);
-
-    makeTypeCheck().processForTesting(null, n);
-    assertEquals(0, compiler.getErrorCount());
-    if (warnings != null) {
-      assertEquals(warnings.length, compiler.getWarningCount());
-      JSError[] messages = compiler.getWarnings();
-      for (int i = 0; i < warnings.length && i < compiler.getWarningCount();
-           i++) {
-        assertEquals(warnings[i], messages[i].description);
-      }
-    } else {
-      assertEquals(0, compiler.getWarningCount());
-    }
+    return new TypeCheck(compiler, new SemanticReverseAbstractInterpreter(registry), registry);
   }
 
   String suppressMissingProperty(String ... props) {

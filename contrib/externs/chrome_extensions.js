@@ -33,7 +33,7 @@
  * The best practices for each are described in more detail below.  It
  * should be noted that, due to historical reasons, and the evolutionary
  * nature of this file, much this file currently violates the best practices
- * described below. As changed are made, the changes should adhere to the
+ * described below. As changes are made, the changes should adhere to the
  * best practices.
  *
  * A. When to Add Packages to this File?
@@ -88,8 +88,8 @@
  *
  *   / **
  *     * at-typedef {?{
- *     *   permissions: (!Array.<string>|undefined),
- *     *   origins: (!Array.<string>|undefined)
+ *     *   permissions: (!Array<string>|undefined),
+ *     *   origins: (!Array<string>|undefined)
  *     * }}
  *     * /
  *   chrome.permissions.Permissions;
@@ -110,7 +110,7 @@
  * Always qualify the type name to reduce top-level pollution in this file:
  *
  *   Do:
- *        chrome.extension.Port = function() {}
+ *        chrome.runtime.Port = function() {}
  *   Don't:
  *        function Port() {}
  *
@@ -129,23 +129,20 @@
  *
  * D. Events
  * Most packages define a set of events with the standard set of methods:
- * addListener, removeListener, hasListener and hasListeners.  ChromeEvent
+ * addListener, removeListener, hasListener and hasListeners.  ChromeVoidEvent
  * is the appropriate type when an event's listeners do not take any
- * parameters, however, many events take parameters specific to that event:
+ * parameters, however, many events take parameters specific to that event.
  *
- * 1. Create a pseudo-type for the event, for example,
- *    chrome.runtime.PortEvent and define the four methods on it.
- * 2. Fully describe the listener/callback's signature, for example,
+ * For those cases, create a record type for the event that extends
+ * ChromeBaseEvent with the correct listener function type filled in.
+ * See any of the Event type definitions below that extend ChromeBaseEvent for
+ * an example.
  *
- *       * at-param {function(!chrome.runtime.Port): void} callback Callback.
- *      chrome.runtime.PortEvent.prototype.addListener =
- *          function(callback) {};
- *    or
- *
- *       * at-param {function(*, !chrome.runtime.MessageSender,
- *       *     function(*): void): (boolean|undefined)} callback Callback.
- *      chrome.runtime.MessageSenderEvent.prototype.addListener =
- *          function(callback) {};
+ * In some cases the addListener method takes more than one argument, so
+ * inheritance from ChromeBaseEvent will not work. In those cases extend
+ * ChromeBaseEventNoListeners instead and add the listener interfaces
+ * explicitly. See any of the Event type definitions below that extend
+ * ChromeBaseEventNoListeners for an example.
  *
  * E. Nullability
  * We treat the Chrome Extension API pages as "the truth".  Not-null types
@@ -164,13 +161,40 @@
  * bottom of this file.
  *
  * G. Enums
- * The Chrome extension APIs define many enums that define a set of acceptable
- * strings, however, they do not reify those enum types, therefore, enum
- * parameters should be defined as {@code string}.
+ * An enum's type name and the name of its members must be included in an
+ * externs file, but the values of its members are ignored by the compiler.
+ * To make it clear enums are not being *defined* in this file, we set
+ * string enum values to the empty string (at this time, there are no
+ * known enums of other types).
+ *
+ * As of Mar 2016, the chrome extension docs are incomplete wrt to enums
+ * as they don't list the member names, only their string values. This means
+ * extension authors will tend to use string literals. Therefore, whereever
+ * an enum type should be used, we support either the enum or a string. Once
+ * the docs are complete, new uses of enums will no longer need the "or string"
+ * portion of the type.
+ *
+ * Finally, most places in this file where enums should be used are using only
+ * string. This is historical and is no longer the recommended practice.
+ *
+ * See enum chrome.wallpaper.WallpaperLayout and chrome.wallpaper.setWallpaper's
+ * param for examples.
  *
  * @externs
  *
  */
+
+
+/*
+ * Ensure projects don't execute this file.
+ * The throw is to catch executions of this file, however, without the guard,
+ * the compiler's flow analysis stops at the throw, even for an externs file.
+ * Therefore, the Math.random() guard fools the compiler during externs
+ * processing.
+ */
+if (Math.random() < 1) {  // always true but the compiler doesn't know that
+  throw 'Externs file "chrome_extensions.js" should not be executed';
+}
 
 
 /**
@@ -213,13 +237,6 @@ chrome.accessibilityFeatures.animationPolicy;
 
 
 /**
- * TODO(tbreisacher): Move all chrome.app.* externs into their own file.
- * @const
- */
-chrome.app = {};
-
-
-/**
  * @const
  * @see http://developer.chrome.com/apps/app.runtime.html
  */
@@ -242,69 +259,11 @@ chrome.app.runtime.LaunchItem.prototype.entry;
 chrome.app.runtime.LaunchItem.prototype.type;
 
 
-
-/**
- * @constructor
- * @see http://developer.chrome.com/apps/app_runtime.html
- */
-chrome.app.runtime.LaunchData = function() {};
+/** @type {!ChromeObjectEvent} */
+chrome.app.runtime.onEmbedRequested;
 
 
-/** @type {string|undefined} */
-chrome.app.runtime.LaunchData.prototype.id;
-
-
-/** @type {!Array.<!chrome.app.runtime.LaunchItem>|undefined} */
-chrome.app.runtime.LaunchData.prototype.items;
-
-
-/** @type {string|undefined} */
-chrome.app.runtime.LaunchData.prototype.url;
-
-
-/** @type {string|undefined} */
-chrome.app.runtime.LaunchData.prototype.referrerUrl;
-
-
-/** @type {boolean|undefined} */
-chrome.app.runtime.LaunchData.prototype.isKioskSession;
-
-
-
-/**
- * The type of chrome.app.runtime.onLaunched.
- * @constructor
- */
-chrome.app.runtime.LaunchEvent = function() {};
-
-
-/**
- * @param {function(!chrome.app.runtime.LaunchData)} callback
- * @see http://developer.chrome.com/apps/app.runtime.html#event-onLaunched
- */
-chrome.app.runtime.LaunchEvent.prototype.addListener = function(callback) {};
-
-
-/**
- * @param {function(!chrome.app.runtime.LaunchData)} callback
- */
-chrome.app.runtime.LaunchEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {function(!chrome.app.runtime.LaunchData)} callback
- * @return {boolean}
- */
-chrome.app.runtime.LaunchEvent.prototype.hasListener = function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-chrome.app.runtime.LaunchEvent.prototype.hasListeners = function() {};
-
-
-/** @type {!chrome.app.runtime.LaunchEvent} */
+/** @type {!ChromeObjectEvent} */
 chrome.app.runtime.onLaunched;
 
 
@@ -324,7 +283,7 @@ chrome.app.window = {};
 
 /**
  * @see https://developer.chrome.com/apps/app_window#method-getAll
- * @return {!Array.<!chrome.app.window.AppWindow>}
+ * @return {!Array<!chrome.app.window.AppWindow>}
  */
 chrome.app.window.getAll = function() {};
 
@@ -347,12 +306,14 @@ chrome.app.window.AppWindow = function() {};
 
 /**
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
  */
 chrome.app.window.AppWindow.prototype.focus = function() {};
 
 
 /**
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
  */
 chrome.app.window.AppWindow.prototype.fullscreen = function() {};
 
@@ -366,6 +327,7 @@ chrome.app.window.AppWindow.prototype.isFullscreen = function() {};
 
 /**
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
  */
 chrome.app.window.AppWindow.prototype.minimize = function() {};
 
@@ -379,6 +341,7 @@ chrome.app.window.AppWindow.prototype.isMinimized = function() {};
 
 /**
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
  */
 chrome.app.window.AppWindow.prototype.maximize = function() {};
 
@@ -392,6 +355,7 @@ chrome.app.window.AppWindow.prototype.isMaximized = function() {};
 
 /**
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
  */
 chrome.app.window.AppWindow.prototype.restore = function() {};
 
@@ -400,6 +364,7 @@ chrome.app.window.AppWindow.prototype.restore = function() {};
  * @param {number} left The new left position, in pixels.
  * @param {number} top The new top position, in pixels.
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
  */
 chrome.app.window.AppWindow.prototype.moveTo = function(left, top) {};
 
@@ -408,24 +373,28 @@ chrome.app.window.AppWindow.prototype.moveTo = function(left, top) {};
  * @param {number} width The new width, in pixels.
  * @param {number} height The new height, in pixels.
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
  */
 chrome.app.window.AppWindow.prototype.resizeTo = function(width, height) {};
 
 
 /**
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
  */
 chrome.app.window.AppWindow.prototype.drawAttention = function() {};
 
 
 /**
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
  */
 chrome.app.window.AppWindow.prototype.clearAttention = function() {};
 
 
 /**
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
  */
 chrome.app.window.AppWindow.prototype.close = function() {};
 
@@ -433,26 +402,29 @@ chrome.app.window.AppWindow.prototype.close = function() {};
 /**
  * @param {boolean=} opt_focus Should the window be focused? Defaults to true.
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
  */
 chrome.app.window.AppWindow.prototype.show = function(opt_focus) {};
 
 
 /**
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
  */
 chrome.app.window.AppWindow.prototype.hide = function() {};
 
 
 /**
- * @return {!chrome.app.window.Bounds} The current window bounds.
+ * @return {!chrome.app.window.ContentBounds} The current window bounds.
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
  */
 chrome.app.window.AppWindow.prototype.getBounds = function() {};
 
 
 /**
- * @param {!chrome.app.window.Bounds} bounds The new window bounds.
+ * @param {!chrome.app.window.ContentBounds} bounds The new window bounds.
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
  */
 chrome.app.window.AppWindow.prototype.setBounds = function(bounds) {};
 
@@ -468,8 +440,29 @@ chrome.app.window.AppWindow.prototype.isAlwaysOnTop = function() {};
  * @param {boolean} alwaysOnTop Set whether the window should stay above most
  *     other windows.
  * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
  */
 chrome.app.window.AppWindow.prototype.setAlwaysOnTop = function(alwaysOnTop) {};
+
+
+/**
+ * @param {boolean} alwaysVisible Set whether the window is visible on all
+ *     workspaces.
+ * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
+ */
+chrome.app.window.AppWindow.prototype.setVisibleOnAllWorkspaces =
+    function(alwaysVisible) {};
+
+
+/**
+ * @param {boolean} wantAllKeys Set whether the window should get all keyboard
+ *     events including system keys that are usually not sent.
+ * @see http://developer.chrome.com/apps/app.window.html#type-AppWindow
+ * @return {undefined}
+ */
+chrome.app.window.AppWindow.prototype.setInterceptAllKeys =
+    function(wantAllKeys) {};
 
 
 /** @type {!ChromeEvent} */
@@ -500,12 +493,32 @@ chrome.app.window.AppWindow.prototype.onRestored;
 chrome.app.window.AppWindow.prototype.contentWindow;
 
 
+/** @type {string} */
+chrome.app.window.AppWindow.prototype.id;
+
+
+/** @type {!chrome.app.window.Bounds} */
+chrome.app.window.AppWindow.prototype.innerBounds;
+
+
+/** @type {!chrome.app.window.Bounds} */
+chrome.app.window.AppWindow.prototype.outerBounds;
+
+
 /**
- * @typedef {{
- *   left: (number|undefined),
- *   top: (number|undefined),
- *   width: (number|undefined),
- *   height: (number|undefined)
+ * @typedef {?{
+ *   left: number,
+ *   top: number,
+ *   width: number,
+ *   height: number,
+ *   minWidth: (number|undefined),
+ *   minHeight: (number|undefined),
+ *   maxWidth: (number|undefined),
+ *   maxHeight: (number|undefined),
+ *   setPosition: function(number, number),
+ *   setSize: function(number, number),
+ *   setMinimumSize: function(number, number),
+ *   setMaximumSize: function(number, number)
  * }}
  * @see http://developer.chrome.com/apps/app.window.html#type-Bounds
  */
@@ -513,20 +526,63 @@ chrome.app.window.Bounds;
 
 
 /**
- * @typedef {{
+ * @typedef {?{
+ *   left: (number|undefined),
+ *   top: (number|undefined),
+ *   width: (number|undefined),
+ *   height: (number|undefined),
+ *   minWidth: (number|undefined),
+ *   minHeight: (number|undefined),
+ *   maxWidth: (number|undefined),
+ *   maxHeight: (number|undefined)
+ * }}
+ * @see http://developer.chrome.com/apps/app_window#type-BoundsSpecification
+ */
+chrome.app.window.BoundsSpecification;
+
+
+/**
+ * @typedef {?{
+ *   left: (number|undefined),
+ *   top: (number|undefined),
+ *   width: (number|undefined),
+ *   height: (number|undefined)
+ * }}
+ * @see http://developer.chrome.com/apps/app_window#type-ContentBounds
+ */
+chrome.app.window.ContentBounds;
+
+
+/**
+ * @typedef {?{
+ *   type: (string|undefined),
+ *   color: (string|undefined),
+ *   activeColor: (string|undefined),
+ *   inactiveColor: (string|undefined)
+ * }}
+ * @see http://developer.chrome.com/apps/app_window#type-FrameOptions
+ */
+chrome.app.window.FrameOptions;
+
+
+/**
+ * @typedef {?{
  *   id: (string|undefined),
+ *   innerBounds: (!chrome.app.window.BoundsSpecification|undefined),
+ *   outerBounds: (!chrome.app.window.BoundsSpecification|undefined),
  *   minWidth: (number|undefined),
  *   minHeight: (number|undefined),
  *   maxWidth: (number|undefined),
  *   maxHeight: (number|undefined),
- *   frame: (string|undefined),
- *   bounds: (!chrome.app.window.Bounds|undefined),
- *   transparentBackground: (boolean|undefined),
+ *   frame: (!chrome.app.window.FrameOptions|string|undefined),
+ *   bounds: (!chrome.app.window.ContentBounds|undefined),
  *   state: (string|undefined),
  *   hidden: (boolean|undefined),
  *   resizable: (boolean|undefined),
+ *   singleton: (boolean|undefined),
  *   alwaysOnTop: (boolean|undefined),
- *   focused: (boolean|undefined)
+ *   focused: (boolean|undefined),
+ *   visibleOnAllWorkspaces: (boolean|undefined)
  * }}
  * @see http://developer.chrome.com/apps/app.window.html#method-create
  */
@@ -540,6 +596,7 @@ chrome.app.window.CreateWindowOptions;
  * @param {function(!chrome.app.window.AppWindow)=} opt_createWindowCallback
  *     Callback to be run.
  * @see http://developer.chrome.com/apps/app.window.html#method-create
+ * @return {undefined}
  */
 chrome.app.window.create = function(
     url, opt_options, opt_createWindowCallback) {};
@@ -642,6 +699,7 @@ chrome.audioModem.ReceivedToken.prototype.band;
  * @param {!chrome.audioModem.RequestParams} params
  * @param {!ArrayBuffer} token
  * @param {function(string)} callback
+ * @return {undefined}
  */
 chrome.audioModem.transmit = function(params, token, callback) {};
 
@@ -649,6 +707,7 @@ chrome.audioModem.transmit = function(params, token, callback) {};
 /**
  * @param {string} band
  * @param {function(string)} callback
+ * @return {undefined}
  */
 chrome.audioModem.stopTransmit = function(band, callback) {};
 
@@ -656,6 +715,7 @@ chrome.audioModem.stopTransmit = function(band, callback) {};
 /**
  * @param {!chrome.audioModem.RequestParams} params
  * @param {function(string)} callback
+ * @return {undefined}
  */
 chrome.audioModem.receive = function(params, callback) {};
 
@@ -663,38 +723,16 @@ chrome.audioModem.receive = function(params, callback) {};
 /**
  * @param {string} band
  * @param {function(string)} callback
+ * @return {undefined}
  */
 chrome.audioModem.stopReceive = function(band, callback) {};
 
 
-/** @constructor */
+/**
+ * @interface
+ * @extends {ChromeBaseEvent<function(!Array<!chrome.audioModem.ReceivedToken>)>}
+ */
 chrome.audioModem.ReceivedEvent = function() {};
-
-
-/**
- * @param {function(!Array<!chrome.audioModem.ReceivedToken>)} callback
- */
-chrome.audioModem.ReceivedEvent.prototype.addListener = function(callback) {};
-
-
-/**
- * @param {function(!Array<!chrome.audioModem.ReceivedToken>)} callback
- */
-chrome.audioModem.ReceivedEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!Array<!chrome.audioModem.ReceivedToken>)} callback
- * @return {boolean}
- */
-chrome.audioModem.ReceivedEvent.prototype.hasListener = function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-chrome.audioModem.ReceivedEvent.prototype.hasListeners = function() {};
 
 
 /** @type {!chrome.audioModem.ReceivedEvent} */
@@ -706,10 +744,9 @@ chrome.audioModem.onTransmitFail;
 
 
 /**
- * @const
  * @see https://developer.chrome.com/apps/bluetooth
  */
-chrome.bluetooth = function() {};
+chrome.bluetooth = {};
 
 
 
@@ -788,13 +825,30 @@ chrome.bluetooth.Device.prototype.paired;
 chrome.bluetooth.Device.prototype.connected;
 
 
-/** @type {!Array.<string>|undefined} */
+/** @type {boolean|undefined} */
+chrome.bluetooth.Device.prototype.connecting;
+
+
+/** @type {boolean|undefined} */
+chrome.bluetooth.Device.prototype.connectable;
+
+
+/** @type {!Array<string>|undefined} */
 chrome.bluetooth.Device.prototype.uuids;
+
+
+/** @type {number|undefined} */
+chrome.bluetooth.Device.prototype.inquiryRssi;
+
+
+/** @type {number|undefined} */
+chrome.bluetooth.Device.prototype.inquiryTxPower;
 
 
 /**
  * @param {function(!chrome.bluetooth.AdapterState)} callback
  * @see https://developer.chrome.com/apps/bluetooth#method-getAdapterState
+ * @return {undefined}
  */
 chrome.bluetooth.getAdapterState = function(callback) {};
 
@@ -803,13 +857,15 @@ chrome.bluetooth.getAdapterState = function(callback) {};
  * @param {string} deviceAddress
  * @param {function(!chrome.bluetooth.Device)} callback
  * @see https://developer.chrome.com/apps/bluetooth#method-getDevice
+ * @return {undefined}
  */
 chrome.bluetooth.getDevice = function(deviceAddress, callback) {};
 
 
 /**
- * @param {function(!Array.<!chrome.bluetooth.Device>)} callback
+ * @param {function(!Array<!chrome.bluetooth.Device>)} callback
  * @see https://developer.chrome.com/apps/bluetooth#method-getDevices
+ * @return {undefined}
  */
 chrome.bluetooth.getDevices = function(callback) {};
 
@@ -817,6 +873,7 @@ chrome.bluetooth.getDevices = function(callback) {};
 /**
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/apps/bluetooth#method-startDiscovery
+ * @return {undefined}
  */
 chrome.bluetooth.startDiscovery = function(opt_callback) {};
 
@@ -824,6 +881,7 @@ chrome.bluetooth.startDiscovery = function(opt_callback) {};
 /**
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/apps/bluetooth#method-stopDiscovery
+ * @return {undefined}
  */
 chrome.bluetooth.stopDiscovery = function(opt_callback) {};
 
@@ -831,31 +889,10 @@ chrome.bluetooth.stopDiscovery = function(opt_callback) {};
 
 /**
  * Event whose listeners take an AdapaterState parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.bluetooth.AdapterState)>}
  */
 chrome.bluetooth.AdapterStateEvent = function() {};
-
-
-/** @param {function(!chrome.bluetooth.AdapterState): void} callback */
-chrome.bluetooth.AdapterStateEvent.prototype.addListener =
-    function(callback) {};
-
-
-/** @param {function(!chrome.bluetooth.AdapterState): void} callback */
-chrome.bluetooth.AdapterStateEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.bluetooth.AdapterState): void} callback
- * @return {boolean}
- */
-chrome.bluetooth.AdapterStateEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.bluetooth.AdapterStateEvent.prototype.hasListeners = function() {};
 
 
 /**
@@ -865,31 +902,12 @@ chrome.bluetooth.AdapterStateEvent.prototype.hasListeners = function() {};
 chrome.bluetooth.onAdapterStateChanged;
 
 
-
 /**
  * Event whose listeners take an Device parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.bluetooth.Device)>}
  */
 chrome.bluetooth.DeviceEvent = function() {};
-
-
-/** @param {function(!chrome.bluetooth.Device): void} callback */
-chrome.bluetooth.DeviceEvent.prototype.addListener = function(callback) {};
-
-
-/** @param {function(!chrome.bluetooth.Device): void} callback */
-chrome.bluetooth.DeviceEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {function(!chrome.bluetooth.Device): void} callback
- * @return {boolean}
- */
-chrome.bluetooth.DeviceEvent.prototype.hasListener = function(callback) {};
-
-
-/** @return {boolean} */
-chrome.bluetooth.DeviceEvent.prototype.hasListeners = function() {};
 
 
 /**
@@ -987,6 +1005,7 @@ chrome.bluetoothSocket.SocketInfo.prototype.uuid;
  *     function(!{socketId: number})} propertiesOrCallback
  * @param {function(!{socketId: number})=} opt_callback
  * @see https://developer.chrome.com/apps/bluetoothSocket#method-create
+ * @return {undefined}
  */
 chrome.bluetoothSocket.create = function(propertiesOrCallback, opt_callback) {};
 
@@ -996,6 +1015,7 @@ chrome.bluetoothSocket.create = function(propertiesOrCallback, opt_callback) {};
  * @param {!chrome.bluetoothSocket.SocketProperties} properties
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/apps/bluetoothSocket#method-update
+ * @return {undefined}
  */
 chrome.bluetoothSocket.update = function(socketId, properties, opt_callback) {};
 
@@ -1005,6 +1025,7 @@ chrome.bluetoothSocket.update = function(socketId, properties, opt_callback) {};
  * @param {boolean} paused
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/apps/bluetoothSocket#method-setPaused
+ * @return {undefined}
  */
 chrome.bluetoothSocket.setPaused = function(socketId, paused, opt_callback) {};
 
@@ -1015,6 +1036,7 @@ chrome.bluetoothSocket.setPaused = function(socketId, paused, opt_callback) {};
  * @param {!chrome.bluetoothSocket.ListenOptions|function()} optionsOrCallback
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/apps/bluetoothSocket#method-listenUsingRfcomm
+ * @return {undefined}
  */
 chrome.bluetoothSocket.listenUsingRfcomm =
     function(socketId, uuid, optionsOrCallback, opt_callback) {};
@@ -1026,6 +1048,7 @@ chrome.bluetoothSocket.listenUsingRfcomm =
  * @param {!chrome.bluetoothSocket.ListenOptions|function()} optionsOrCallback
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/apps/bluetoothSocket#method-listenUsingL2cap
+ * @return {undefined}
  */
 chrome.bluetoothSocket.listenUsingL2cap =
     function(socketId, uuid, optionsOrCallback, opt_callback) {};
@@ -1037,6 +1060,7 @@ chrome.bluetoothSocket.listenUsingL2cap =
  * @param {string} uuid
  * @param {function()} callback
  * @see https://developer.chrome.com/apps/bluetoothSocket#method-connect
+ * @return {undefined}
  */
 chrome.bluetoothSocket.connect = function(socketId, address, uuid, callback) {};
 
@@ -1045,6 +1069,7 @@ chrome.bluetoothSocket.connect = function(socketId, address, uuid, callback) {};
  * @param {number} socketId
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/apps/bluetoothSocket#method-disconnect
+ * @return {undefined}
  */
 chrome.bluetoothSocket.disconnect = function(socketId, opt_callback) {};
 
@@ -1053,6 +1078,7 @@ chrome.bluetoothSocket.disconnect = function(socketId, opt_callback) {};
  * @param {number} socketId
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/apps/bluetoothSocket#method-close
+ * @return {undefined}
  */
 chrome.bluetoothSocket.close = function(socketId, opt_callback) {};
 
@@ -1062,6 +1088,7 @@ chrome.bluetoothSocket.close = function(socketId, opt_callback) {};
  * @param {!ArrayBuffer} data
  * @param {function(number)=} opt_callback
  * @see https://developer.chrome.com/apps/bluetoothSocket#method-send
+ * @return {undefined}
  */
 chrome.bluetoothSocket.send = function(socketId, data, opt_callback) {};
 
@@ -1070,13 +1097,15 @@ chrome.bluetoothSocket.send = function(socketId, data, opt_callback) {};
  * @param {number} socketId
  * @param {function(!chrome.bluetoothSocket.SocketInfo)} callback
  * @see https://developer.chrome.com/apps/bluetoothSocket#method-getInfo
+ * @return {undefined}
  */
 chrome.bluetoothSocket.getInfo = function(socketId, callback) {};
 
 
 /**
- * @param {function(!Array.<!chrome.bluetoothSocket.SocketInfo>)} callback
+ * @param {function(!Array<!chrome.bluetoothSocket.SocketInfo>)} callback
  * @see https://developer.chrome.com/apps/bluetoothSocket#method-getSockets
+ * @return {undefined}
  */
 chrome.bluetoothSocket.getSockets = function(callback) {};
 
@@ -1100,35 +1129,10 @@ chrome.bluetoothSocket.AcceptEventData.prototype.clientSocketId;
 
 /**
  * Event whose listeners take a AcceptEventData parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.bluetoothSocket.AcceptEventData)>}
  */
 chrome.bluetoothSocket.AcceptEvent = function() {};
-
-
-/**
- * @param {function(!chrome.bluetoothSocket.AcceptEventData): void} callback
- */
-chrome.bluetoothSocket.AcceptEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.bluetoothSocket.AcceptEventData): void} callback
- */
-chrome.bluetoothSocket.AcceptEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.bluetoothSocket.AcceptEventData): void} callback
- * @return {boolean}
- */
-chrome.bluetoothSocket.AcceptEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.bluetoothSocket.AcceptEvent.prototype.hasListeners = function() {};
 
 
 /** @type {!chrome.bluetoothSocket.AcceptEvent} */
@@ -1158,39 +1162,10 @@ chrome.bluetoothSocket.AcceptErrorEventData.prototype.error;
 
 /**
  * Event whose listeners take a AcceptErrorEventData parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.bluetoothSocket.AcceptErrorEventData)>}
  */
 chrome.bluetoothSocket.AcceptErrorEvent = function() {};
-
-
-/**
- * @param {function(
- *     !chrome.bluetoothSocket.AcceptErrorEventData): void} callback
- */
-chrome.bluetoothSocket.AcceptErrorEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {function(
- *     !chrome.bluetoothSocket.AcceptErrorEventData): void} callback
- */
-chrome.bluetoothSocket.AcceptErrorEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(
- *     !chrome.bluetoothSocket.AcceptErrorEventData): void} callback
- * @return {boolean}
- */
-chrome.bluetoothSocket.AcceptErrorEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.bluetoothSocket.AcceptErrorEvent.prototype.hasListeners =
-    function() {};
 
 
 /** @type {!chrome.bluetoothSocket.AcceptErrorEvent} */
@@ -1216,35 +1191,11 @@ chrome.bluetoothSocket.ReceiveEventData.prototype.data;
 
 /**
  * Event whose listeners take a ReceiveEventData parameter.
- * @constructor
+ * @interface
+ * @extends
+ *     {ChromeBaseEvent<function(!chrome.bluetoothSocket.ReceiveEventData)>}
  */
 chrome.bluetoothSocket.ReceiveEvent = function() {};
-
-
-/**
- * @param {function(!chrome.bluetoothSocket.ReceiveEventData): void} callback
- */
-chrome.bluetoothSocket.ReceiveEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.bluetoothSocket.ReceiveEventData): void} callback
- */
-chrome.bluetoothSocket.ReceiveEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.bluetoothSocket.ReceiveEventData): void} callback
- * @return {boolean}
- */
-chrome.bluetoothSocket.ReceiveEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.bluetoothSocket.ReceiveEvent.prototype.hasListeners = function() {};
 
 
 /** @type {!chrome.bluetoothSocket.ReceiveEvent} */
@@ -1274,39 +1225,11 @@ chrome.bluetoothSocket.ReceiveErrorEventData.prototype.error;
 
 /**
  * Event whose listeners take a ReceiveErrorEventData parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<
+ *     function(!chrome.bluetoothSocket.ReceiveErrorEventData)>}
  */
 chrome.bluetoothSocket.ReceiveErrorEvent = function() {};
-
-
-/**
- * @param {function(
- *     !chrome.bluetoothSocket.ReceiveErrorEventData): void} callback
- */
-chrome.bluetoothSocket.ReceiveErrorEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {function(
- *     !chrome.bluetoothSocket.ReceiveErrorEventData): void} callback
- */
-chrome.bluetoothSocket.ReceiveErrorEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(
- *     !chrome.bluetoothSocket.ReceiveErrorEventData): void} callback
- * @return {boolean}
- */
-chrome.bluetoothSocket.ReceiveErrorEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.bluetoothSocket.ReceiveErrorEvent.prototype.hasListeners =
-    function() {};
 
 
 /** @type {!chrome.bluetoothSocket.ReceiveErrorEvent} */
@@ -1321,75 +1244,60 @@ chrome.bluetoothLowEnergy = {};
 
 
 /**
- * @constructor
+ * @typedef {?{
+ *   uuid: string,
+ *   isPrimary: boolean,
+ *   instanceId: (string|undefined),
+ *   deviceAddress: (string|undefined)
+ * }}
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#type-Service
  */
-chrome.bluetoothLowEnergy.Service = function() {};
-
-
-/** @type {string} */
-chrome.bluetoothLowEnergy.Service.prototype.uuid;
-
-
-/** @type {boolean} */
-chrome.bluetoothLowEnergy.Service.prototype.isPrimary;
-
-
-/** @type {string|undefined} */
-chrome.bluetoothLowEnergy.Service.prototype.instanceId;
-
-
-/** @type {string|undefined} */
-chrome.bluetoothLowEnergy.Service.prototype.deviceAddress;
+chrome.bluetoothLowEnergy.Service;
 
 
 /**
  * @constructor
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#type-Request
+ */
+chrome.bluetoothLowEnergy.Request = function() {};
+
+
+/** @type {number} */
+chrome.bluetoothLowEnergy.Request.prototype.requestId;
+
+
+/** @type {!Object} */
+chrome.bluetoothLowEnergy.Request.prototype.device;
+
+
+/** @type {!ArrayBuffer|undefined} */
+chrome.bluetoothLowEnergy.Request.prototype.value;
+
+
+/**
+ * @typedef {?{
+ *   uuid: string,
+ *   service: (!chrome.bluetoothLowEnergy.Service|undefined),
+ *   properties: !Array<string>,
+ *   instanceId: (string|undefined),
+ *   value: (!ArrayBuffer|undefined)
+ * }}
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#type-Characteristic
  */
-chrome.bluetoothLowEnergy.Characteristic = function() {};
-
-
-/** @type {string} */
-chrome.bluetoothLowEnergy.Characteristic.prototype.uuid;
-
-
-/** @type {!chrome.bluetoothLowEnergy.Service} */
-chrome.bluetoothLowEnergy.Characteristic.prototype.service;
-
-
-/** @type {!Array.<string>} */
-chrome.bluetoothLowEnergy.Characteristic.prototype.properties;
-
-
-/** @type {string|undefined} */
-chrome.bluetoothLowEnergy.Characteristic.prototype.instanceId;
-
-
-/** @type {!ArrayBuffer|undefined} */
-chrome.bluetoothLowEnergy.Characteristic.prototype.value;
+chrome.bluetoothLowEnergy.Characteristic;
 
 
 /**
- * @constructor
+ * @typedef {?{
+ *   uuid: string,
+ *   characteristic: (!chrome.bluetoothLowEnergy.Characteristic|undefined),
+ *   permissions: !Array<string>,
+ *   instanceId: (string|undefined),
+ *   value: (!ArrayBuffer|undefined)
+ * }}
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#type-Descriptor
  */
-chrome.bluetoothLowEnergy.Descriptor = function() {};
-
-/** @type {string} */
-chrome.bluetoothLowEnergy.Descriptor.prototype.uuid;
-
-
-/** @type {!chrome.bluetoothLowEnergy.Characteristic} */
-chrome.bluetoothLowEnergy.Descriptor.prototype.characteristic;
-
-
-/** @type {string|undefined} */
-chrome.bluetoothLowEnergy.Descriptor.prototype.instanceId;
-
-
-/** @type {!ArrayBuffer|undefined} */
-chrome.bluetoothLowEnergy.Descriptor.prototype.value;
+chrome.bluetoothLowEnergy.Descriptor;
 
 
 /**
@@ -1406,6 +1314,7 @@ chrome.bluetoothLowEnergy.ConnectionProperties;
  *     propertiesOrCallback
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-connect
+ * @return {undefined}
  */
 chrome.bluetoothLowEnergy.connect =
   function(deviceAddress, propertiesOrCallback, opt_callback) {};
@@ -1414,6 +1323,7 @@ chrome.bluetoothLowEnergy.connect =
  * @param {string} deviceAddress
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-disconnect
+ * @return {undefined}
  */
 chrome.bluetoothLowEnergy.disconnect = function(deviceAddress, opt_callback) {};
 
@@ -1422,14 +1332,25 @@ chrome.bluetoothLowEnergy.disconnect = function(deviceAddress, opt_callback) {};
  * @param {string} serviceId
  * @param {function(!chrome.bluetoothLowEnergy.Service)} callback
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-getService
+ * @return {undefined}
  */
 chrome.bluetoothLowEnergy.getService = function(serviceId, callback) {};
 
 
 /**
+ * @param {!chrome.bluetoothLowEnergy.Service} service
+ * @param {function(string)} callback
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-createService
+ * @return {undefined}
+ */
+chrome.bluetoothLowEnergy.createService = function(service, callback) {};
+
+
+/**
  * @param {string} deviceAddress
- * @param {function(!Array.<!chrome.bluetoothLowEnergy.Service>)} callback
+ * @param {function(!Array<!chrome.bluetoothLowEnergy.Service>)} callback
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-getServices
+ * @return {undefined}
  */
 chrome.bluetoothLowEnergy.getServices = function(deviceAddress, callback) {};
 
@@ -1438,16 +1359,29 @@ chrome.bluetoothLowEnergy.getServices = function(deviceAddress, callback) {};
  * @param {string} characteristicId
  * @param {function(!chrome.bluetoothLowEnergy.Characteristic)} callback
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-getCharacteristic
+ * @return {undefined}
  */
 chrome.bluetoothLowEnergy.getCharacteristic =
     function(characteristicId, callback) {};
 
 
 /**
+ * @param {!chrome.bluetoothLowEnergy.Characteristic} characteristic
  * @param {string} serviceId
- * @param {function(!Array.<!chrome.bluetoothLowEnergy.Characteristic>)}
+ * @param {function(string)} callback
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-createCharacteristic
+ * @return {undefined}
+ */
+chrome.bluetoothLowEnergy.createCharacteristic = function(
+    characteristic, serviceId, callback) {};
+
+
+/**
+ * @param {string} serviceId
+ * @param {function(!Array<!chrome.bluetoothLowEnergy.Characteristic>)}
  * callback
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-getCharacteristics
+ * @return {undefined}
  */
 chrome.bluetoothLowEnergy.getCharacteristics =
     function(serviceId, callback) {};
@@ -1455,8 +1389,9 @@ chrome.bluetoothLowEnergy.getCharacteristics =
 
 /**
  * @param {string} serviceId
- * @param {function(!Array.<!chrome.bluetoothLowEnergy.Service>)} callback
+ * @param {function(!Array<!chrome.bluetoothLowEnergy.Service>)} callback
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-getIncludedServices
+ * @return {undefined}
  */
 chrome.bluetoothLowEnergy.getIncludedServices =
   function(serviceId, callback) {};
@@ -1466,14 +1401,27 @@ chrome.bluetoothLowEnergy.getIncludedServices =
  * @param {string} descriptorId
  * @param {function(!chrome.bluetoothLowEnergy.Descriptor)} callback
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-getDescriptor
+ * @return {undefined}
  */
 chrome.bluetoothLowEnergy.getDescriptor = function(descriptorId, callback) {};
 
 
 /**
+ * @param {!chrome.bluetoothLowEnergy.Descriptor} descriptor
  * @param {string} characteristicId
- * @param {function(!Array.<!chrome.bluetoothLowEnergy.Descriptor>)} callback
+ * @param {function(string)} callback
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-createDescriptor
+ * @return {undefined}
+ */
+chrome.bluetoothLowEnergy.createDescriptor = function(
+    descriptor, characteristicId, callback) {};
+
+
+/**
+ * @param {string} characteristicId
+ * @param {function(!Array<!chrome.bluetoothLowEnergy.Descriptor>)} callback
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-getDescriptors
+ * @return {undefined}
  */
 chrome.bluetoothLowEnergy.getDescriptors =
   function(characteristicId, callback) {};
@@ -1483,6 +1431,7 @@ chrome.bluetoothLowEnergy.getDescriptors =
  * @param {string} characteristicId
  * @param {function(!chrome.bluetoothLowEnergy.Characteristic)} callback
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-readCharacteristicValue
+ * @return {undefined}
  */
 chrome.bluetoothLowEnergy.readCharacteristicValue =
   function(characteristicId, callback) {};
@@ -1493,6 +1442,7 @@ chrome.bluetoothLowEnergy.readCharacteristicValue =
  * @param {!ArrayBuffer} value
  * @param {function()} callback
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-writeCharacteristicValue
+ * @return {undefined}
  */
 chrome.bluetoothLowEnergy.writeCharacteristicValue =
   function(characteristicId, value, callback) {};
@@ -1511,7 +1461,8 @@ chrome.bluetoothLowEnergy.NotificationSessionProperties;
   *     propertiesOrCallback
   * @param {function()=} opt_callback
   * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-startCharacteristicNotifications
-  */
+  * @return {undefined}
+ */
 chrome.bluetoothLowEnergy.startCharacteristicNotifications =
   function(characteristicId, propertiesOrCallback, opt_callback) {};
 
@@ -1520,15 +1471,37 @@ chrome.bluetoothLowEnergy.startCharacteristicNotifications =
   * @param {string} characteristicId
   * @param {function()=} opt_callback
   * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-stopCharacteristicNotifications
-  */
+  * @return {undefined}
+ */
 chrome.bluetoothLowEnergy.stopCharacteristicNotifications =
   function(characteristicId, opt_callback) {};
+
+
+/**
+ * @typedef {?{
+ *   value: !ArrayBuffer,
+ *   shouldIndicate: (boolean|undefined)
+ * }}
+ */
+chrome.bluetoothLowEnergy.NotificationIndication;
+
+
+/**
+ * @param {string} characteristicId
+ * @param {!chrome.bluetoothLowEnergy.NotificationIndication} notification
+ * @param {function()} callback
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-notifyCharacteristicValueChanged
+ * @return {undefined}
+ */
+chrome.bluetoothLowEnergy.notifyCharacteristicValueChanged = function(
+    characteristicId, notification, callback) {};
 
 
 /**
  * @param {string} descriptorId
  * @param {function(!chrome.bluetoothLowEnergy.Descriptor)} callback
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-readDescriptorValue
+ * @return {undefined}
  */
 chrome.bluetoothLowEnergy.readDescriptorValue =
   function(descriptorId, callback) {};
@@ -1539,38 +1512,107 @@ chrome.bluetoothLowEnergy.readDescriptorValue =
  * @param {!ArrayBuffer} value
  * @param {function()} callback
  * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-writeDescriptorValue
+ * @return {undefined}
  */
 chrome.bluetoothLowEnergy.writeDescriptorValue =
   function(descriptorId, value, callback) {};
 
 
 /**
+ * @param {string} serviceId
+ * @param {function()} callback
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-registerService
+ * @return {undefined}
+ */
+chrome.bluetoothLowEnergy.registerService = function(serviceId, callback) {};
+
+
+/**
+ * @param {string} serviceId
+ * @param {function()} callback
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-unregisterService
+ * @return {undefined}
+ */
+chrome.bluetoothLowEnergy.unregisterService = function(serviceId, callback) {};
+
+
+/**
+ * @param {string} serviceId
+ * @param {function()=} opt_callback
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-removeService
+ * @return {undefined}
+ */
+chrome.bluetoothLowEnergy.removeService = function(serviceId, opt_callback) {};
+
+
+/**
+ * @typedef {?{
+ *   type: string,
+ *   serviceUuids: (!Array<string>|undefined),
+ *   manufacturerData: (!Array<{id: number, data: !Array<number>}>|undefined),
+ *   solicitUuids: (!Array<string>|undefined),
+ *   serviceData: (!Array<{uuid: string, data: !Array<number>}>|undefined)
+ * }}
+ */
+chrome.bluetoothLowEnergy.Advertisement;
+
+
+/**
+ * @param {!chrome.bluetoothLowEnergy.Advertisement} advertisement
+ * @param {function(number)} callback
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-registerAdvertisement
+ */
+chrome.bluetoothLowEnergy.registerAdvertisement =
+    function(advertisement, callback) {};
+
+
+/**
+ * @param {number} advertisementId
+ * @param {function()} callback
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-unregisterAdvertisement
+ */
+chrome.bluetoothLowEnergy.unregisterAdvertisement =
+    function(advertisementId, callback) {};
+
+
+/**
+ * @param {function()} callback
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-resetAdvertising
+ */
+chrome.bluetoothLowEnergy.resetAdvertising = function(callback) {};
+
+
+/**
+ * @param {number} minInterval
+ * @param {number} maxInterval
+ * @param {function()} callback
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#method-setAdvertisingInterval
+ */
+chrome.bluetoothLowEnergy.setAdvertisingInterval = function(
+    minInterval, maxInterval, callback) {};
+
+
+/**
+ * @typedef {?{
+ *   requestId: number,
+ *   isError: boolean,
+ *   value: (!ArrayBuffer|undefined)
+ * }}
+ */
+chrome.bluetoothLowEnergy.RequestResponse;
+
+
+/** @param {!chrome.bluetoothLowEnergy.RequestResponse} response */
+chrome.bluetoothLowEnergy.sendRequestResponse = function(response) {};
+
+
+/**
  * Event whose listeners take a Service parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.bluetoothLowEnergy.Service)>}
  */
 chrome.bluetoothLowEnergy.ServiceEvent = function() {};
 
-
-/** @param {function(!chrome.bluetoothLowEnergy.Service): void} callback */
-chrome.bluetoothLowEnergy.ServiceEvent.prototype.addListener =
-    function(callback) {};
-
-
-/** @param {function(!chrome.bluetoothLowEnergy.Service): void} callback */
-chrome.bluetoothLowEnergy.ServiceEvent.prototype.removeListener =
-    function(callback) {};
-
-/**
- * @param {function(!chrome.bluetoothLowEnergy.Service): void} callback
- * @return {boolean}
- */
-chrome.bluetoothLowEnergy.ServiceEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.bluetoothLowEnergy.ServiceEvent.prototype.hasListeners =
-    function() {};
 
 /**
   * @type {!chrome.bluetoothLowEnergy.ServiceEvent}
@@ -1595,39 +1637,10 @@ chrome.bluetoothLowEnergy.onServiceRemoved;
 
 /**
  * Event whose listeners take a Characteristic parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.bluetoothLowEnergy.Characteristic)>}
  */
 chrome.bluetoothLowEnergy.CharacteristicEvent = function() {};
-
-
-/**
- * @param {function(!chrome.bluetoothLowEnergy.Characteristic): void}
- *     callback
- */
-chrome.bluetoothLowEnergy.CharacteristicEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.bluetoothLowEnergy.Characteristic): void}
- *     callback
- */
-chrome.bluetoothLowEnergy.CharacteristicEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.bluetoothLowEnergy.Characteristic): void}
- *     callback
- * @return {boolean}
- */
-chrome.bluetoothLowEnergy.CharacteristicEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.bluetoothLowEnergy.CharacteristicEvent.prototype.hasListeners =
-    function() {};
 
 
 /**
@@ -1638,39 +1651,11 @@ chrome.bluetoothLowEnergy.onCharacteristicValueChanged;
 
 
 /**
- * Event whose listeners take a Characteristic parameter.
- * @constructor
+ * Event whose listeners take a Descriptor parameter.
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.bluetoothLowEnergy.Descriptor)>}
  */
 chrome.bluetoothLowEnergy.DescriptorEvent = function() {};
-
-
-/**
- * @param {function(!chrome.bluetoothLowEnergy.Descriptor): void}
- *     callback
- */
-chrome.bluetoothLowEnergy.DescriptorEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.bluetoothLowEnergy.Descriptor): void}
- *     callback
- */
-chrome.bluetoothLowEnergy.DescriptorEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.bluetoothLowEnergy.Descriptor): void} callback
- * @return {boolean}
- */
-chrome.bluetoothLowEnergy.DescriptorEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.bluetoothLowEnergy.DescriptorEvent.prototype.hasListeners =
-    function() {};
 
 
 /**
@@ -1681,6 +1666,42 @@ chrome.bluetoothLowEnergy.onDescriptorValueChanged;
 
 
 /**
+ * Event whose listeners take a Request parameter.
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.bluetoothLowEnergy.Request, string)>}
+ */
+chrome.bluetoothLowEnergy.RequestEvent = function() {};
+
+
+/**
+ * @type {!chrome.bluetoothLowEnergy.RequestEvent}
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#event-onCharacteristicReadRequest
+ */
+chrome.bluetoothLowEnergy.onCharacteristicReadRequest;
+
+
+/**
+ * @type {!chrome.bluetoothLowEnergy.RequestEvent}
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#event-onCharacteristicWriteRequest
+ */
+chrome.bluetoothLowEnergy.onCharacteristicWriteRequest;
+
+
+/**
+ * @type {!chrome.bluetoothLowEnergy.RequestEvent}
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#event-onDescriptorReadRequest
+ */
+chrome.bluetoothLowEnergy.onDescriptorReadRequest;
+
+
+/**
+ * @type {!chrome.bluetoothLowEnergy.RequestEvent}
+ * @see https://developer.chrome.com/apps/bluetoothLowEnergy#event-onDescriptorWriteRequest
+ */
+chrome.bluetoothLowEnergy.onDescriptorWriteRequest;
+
+
+/**
  * @see http://developer.chrome.com/extensions/commands.html
  * @const
  */
@@ -1688,7 +1709,8 @@ chrome.commands = {};
 
 
 /**
- * @param {function(Array.<string>): void} callback Callback function.
+ * @param {function(Array<string>): void} callback Callback function.
+ * @return {undefined}
  */
 chrome.commands.getAll = function(callback) {};
 
@@ -1795,9 +1817,10 @@ chrome.copresence.Operation;
 
 
 /**
- * @param {!Array.<!chrome.copresence.Operation>} operations
+ * @param {!Array<!chrome.copresence.Operation>} operations
  * @param {function(string): void} callback
  * @see https://developer.chrome.com/apps/copresence#method-execute
+ * @return {undefined}
  */
 chrome.copresence.execute = function(operations, callback) {};
 
@@ -1806,36 +1829,11 @@ chrome.copresence.execute = function(operations, callback) {};
 /**
  * Event whose listeners take a subscription id and received messages as a
  * parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(string, !Array<!chrome.copresence.Message>)>}
  * @see https://developer.chrome.com/apps/copresence#event-onMessagesReceived
  */
 chrome.copresence.MessagesReceivedEvent = function() {};
-
-
-/**
- * @param {function(string, !Array.<!chrome.copresence.Message>): void} callback
- */
-chrome.copresence.MessagesReceivedEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {function(string, !Array.<!chrome.copresence.Message>): void} callback
- */
-chrome.copresence.MessagesReceivedEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(string, !Array.<!chrome.copresence.Message>): void} callback
- * @return {boolean}
- */
-chrome.copresence.MessagesReceivedEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.copresence.MessagesReceivedEvent.prototype.hasListeners = function() {};
 
 
 /**
@@ -1857,6 +1855,22 @@ chrome.copresence.onStatusUpdated;
  * @const
  */
 chrome.enterprise = {};
+
+
+/**
+ * @constructor
+ * deviceAttributes allows for reading device attributes.
+ * @see https://developer.chrome.com/extensions/enterprise_deviceAttributes.
+ */
+chrome.enterprise.deviceAttributes = function() {};
+
+
+/**
+ * @param {function(string): void} callback Called with the device identifier
+ *     of the directory API when received.
+ * @return {undefined}
+ */
+chrome.enterprise.deviceAttributes.getDirectoryDeviceId = function(callback) {};
 
 
 /**
@@ -1890,16 +1904,53 @@ chrome.enterprise.Token.prototype.subtleCrypto;
 
 
 /**
- * @param {function(!Array.<!chrome.enterprise.Token>): void} callback Called
+ * @param {!ArrayBuffer} challenge A challenge as emitted by the Verified Access
+ *     Web API.
+ * @param {boolean|function(!ArrayBuffer): void} registerKeyOrCallback Either a
+ *     flag indicating whether to register the key, in which case the callback
+ *     is passed as the next arg, or the callback. If a flag is set, the current
+ *     Enterprise Machine Key is registered with the "system" token and
+ *     relinquishes the Enterprise Machine Key role. The key can then be
+ *     associated with a certificate and used like any other signing key. This
+ *     key is 2048-bit RSA. Subsequent calls to this function will then generate
+ *     a new Enterprise Machine Key.
+ * @param {function(!ArrayBuffer=): void=} callback The callback (called back
+ *     with the challenge response), if arg2 was the registerKey flag.
+ * @return {undefined}
+ */
+chrome.enterprise.platformKeys.challengeMachineKey =
+    function(challenge, registerKeyOrCallback, callback) {};
+
+
+/**
+ * @param {!ArrayBuffer} challenge A challenge as emitted by the Verified Access
+ *     Web API.
+ * @param {boolean} registerKey If set, the current Enterprise User Key is
+ *     registered with the "user" token and relinquishes the Enterprise User
+ *     Key role. The key can then be associated with a certificate and used like
+ *     any other signing key. This key is 2048-bit RSA. Subsequent calls to this
+ *     function will then generate a new Enterprise User Key.
+ * @param {function(!ArrayBuffer): void} callback Called back with the
+ *     challenge response.
+ * @return {undefined}
+ */
+chrome.enterprise.platformKeys.challengeUserKey =
+    function(challenge, registerKey, callback) {};
+
+
+/**
+ * @param {function(!Array<!chrome.enterprise.Token>): void} callback Called
  * with an array of Tokens.
+ * @return {undefined}
  */
 chrome.enterprise.platformKeys.getTokens = function(callback) {};
 
 
 /**
  * @param {string} tokenId Id of cetificate token either "user" or "system".
- * @param {(function(!Array.<!ArrayBuffer>): void)} callback Array of DER
+ * @param {(function(!Array<!ArrayBuffer>): void)} callback Array of DER
  *     encoded x.509 certificates.
+ * @return {undefined}
  */
 chrome.enterprise.platformKeys.getCertificates = function(tokenId, callback) {};
 
@@ -1909,6 +1960,7 @@ chrome.enterprise.platformKeys.getCertificates = function(tokenId, callback) {};
  * @param {!ArrayBuffer} certificate The DER encoding of a X.509 certificate.
  * @param {function(): void=} opt_callback Called back when this operation is
  *     finished.
+ * @return {undefined}
  */
 chrome.enterprise.platformKeys.importCertificate =
     function(tokenId, certificate, opt_callback) {};
@@ -1919,6 +1971,7 @@ chrome.enterprise.platformKeys.importCertificate =
  * @param {!ArrayBuffer} certificate The DER encoding of a X.509 certificate.
  * @param {(function(): void)=} opt_callback Called back when this operation is
  *     finished.
+ * @return {undefined}
  */
 chrome.enterprise.platformKeys.removeCertificate =
     function(tokenId, certificate, opt_callback) {};
@@ -1929,6 +1982,16 @@ chrome.enterprise.platformKeys.removeCertificate =
  * @const
  */
 chrome.extension = {};
+
+
+/**
+ * @enum {string}
+ * @see https://developer.chrome.com/extensions/extension#type-ViewType
+ */
+chrome.extension.ViewType = {
+  TAB: '',
+  POPUP: '',
+};
 
 
 /** @type {!Object|undefined} */
@@ -1948,10 +2011,10 @@ chrome.extension.inIncognitoContext;
 // TODO: change Object to !Object when it's clear nobody is passing in null
 // TODO: change Port to !Port since it should never be null
 /**
- * @param {string|Object.<string>=} opt_extensionIdOrConnectInfo Either the
+ * @param {string|Object<string>=} opt_extensionIdOrConnectInfo Either the
  *     extensionId to connect to, in which case connectInfo params can be
  *     passed in the next optional argument, or the connectInfo params.
- * @param {Object.<string>=} opt_connectInfo The connectInfo object,
+ * @param {Object<string>=} opt_connectInfo The connectInfo object,
  *     if arg1 was the extensionId to connect to.
  * @return {Port} New port.
  */
@@ -1974,21 +2037,31 @@ chrome.extension.getURL = function(path) {};
 
 
 /**
- * @param {Object=} opt_fetchProperties An object with optional 'type' and
- *     optional 'windowId' keys.
- * @return {Array.<Window>} The global JS objects for each content view.
+ * @typedef {?{
+ *   type: (!chrome.extension.ViewType|string|undefined),
+ *   windowId: (number|undefined),
+ *   tabId: (number|undefined)
+ * }}
+ */
+chrome.extension.ViewInfo;
+
+/**
+ * @param {?chrome.extension.ViewInfo=} opt_fetchProperties
+ * @return {Array<Window>} The global JS objects for each content view.
  */
 chrome.extension.getViews = function(opt_fetchProperties) {};
 
 
 /**
  * @param {function(boolean): void} callback Callback function.
+ * @return {undefined}
  */
 chrome.extension.isAllowedFileSchemeAccess = function(callback) {};
 
 
 /**
  * @param {function(boolean): void} callback Callback function.
+ * @return {undefined}
  */
 chrome.extension.isAllowedIncognitoAccess = function(callback) {};
 
@@ -2000,6 +2073,7 @@ chrome.extension.isAllowedIncognitoAccess = function(callback) {};
  * @param {*=} opt_request The request value, if arg1 was the extensionId.
  * @param {function(*): void=} opt_callback The callback function which
  *     takes a JSON response object sent by the handler of the request.
+ * @return {undefined}
  */
 chrome.extension.sendMessage = function(
     extensionIdOrRequest, opt_request, opt_callback) {};
@@ -2011,12 +2085,14 @@ chrome.extension.sendMessage = function(
  * @param {*=} opt_request The request value, if arg1 was the extensionId.
  * @param {function(*): void=} opt_callback The callback function which
  *     takes a JSON response object sent by the handler of the request.
+ * @return {undefined}
  */
 chrome.extension.sendRequest = function(opt_arg1, opt_request, opt_callback) {};
 
 
 /**
  * @param {string} data
+ * @return {undefined}
  */
 chrome.extension.setUpdateUrlData = function(data) {};
 
@@ -2041,22 +2117,6 @@ chrome.extension.onRequest;
 chrome.extension.onRequestExternal;
 
 
-/**
- * @see https://developer.chrome.com/extensions/runtime.html
- * @const
- */
-chrome.runtime = {};
-
-
-/** @type {!Object|undefined} */
-chrome.runtime.lastError = {};
-
-
-/**
- * @type {string|undefined}
- */
-chrome.runtime.lastError.message;
-
 
 /** @type {string} */
 chrome.runtime.id;
@@ -2064,16 +2124,30 @@ chrome.runtime.id;
 
 /**
  * @param {function(!Window=): void} callback Callback function.
+ * @return {undefined}
  */
 chrome.runtime.getBackgroundPage = function(callback) {};
 
 
+/**
+ * @param {function(): void=} opt_callback Callback function.
+ * @return {undefined}
+ */
+chrome.runtime.openOptionsPage = function(opt_callback) {};
+
 
 /**
  * Manifest information returned from chrome.runtime.getManifest. See
- * http://developer.chrome.com/extensions/manifest.html. Note that there are
- * several other fields not included here. They should be added to these externs
- * as needed.
+ * https://developer.chrome.com/extensions/manifest.html and
+ * https://developer.chrome.com/apps/manifest.html
+ *
+ * Note that:
+ * 1) There are several other fields not included here. They should be
+ *    added to these externs as needed.
+ * 2) There are some distinct fields for app vs extension manifests. The
+ *    below manifest definition contains the union of all fields; unique
+ *    fields should be annotated as such (see e.g. kiosk_only property
+ *    below).
  * @constructor
  */
 chrome.runtime.Manifest = function() {};
@@ -2099,8 +2173,23 @@ chrome.runtime.Manifest.prototype.description;
 chrome.runtime.Manifest.prototype.oauth2;
 
 
-/** @type {!Array.<(string|!Object)>} */
+/** @type {!Array<(string|!Object)>} */
 chrome.runtime.Manifest.prototype.permissions;
+
+
+/**
+ * App-only manifest field.
+ * @see https://developer.chrome.com/apps/manifest
+ * @type {boolean|undefined}
+ */
+chrome.runtime.Manifest.prototype.kiosk_only;
+
+/**
+ * App-only manifest field.
+ * @see https://developer.chrome.com/apps/manifest
+ * @type {boolean|undefined}
+ */
+chrome.runtime.Manifest.prototype.kiosk_enabled;
 
 
 
@@ -2116,12 +2205,13 @@ chrome.runtime.Manifest.Oauth2 = function() {};
 chrome.runtime.Manifest.Oauth2.prototype.client_id;
 
 
-/**@type {!Array.<string>} */
+/**@type {!Array<string>} */
 chrome.runtime.Manifest.Oauth2.prototype.scopes;
 
 
 /**
- * http://developer.chrome.com/extensions/runtime.html#method-getManifest
+ * https://developer.chrome.com/extensions/runtime.html#method-getManifest
+ * https://developer.chrome.com/apps/runtime#method-getManifest
  * @return {!chrome.runtime.Manifest} The full manifest file of the app or
  *     extension.
  */
@@ -2139,12 +2229,14 @@ chrome.runtime.getURL = function(path) {};
 /**
  * @param {string} url This may be used to clean up server-side data, do
  *     analytics, and implement surveys. Maximum 255 characters.
+ * @return {undefined}
  */
-chrome.runtime.setUninstallUrl = function(url) {};
+chrome.runtime.setUninstallURL = function(url) {};
 
 
 /**
  * Reloads the app or extension.
+ * @return {undefined}
  */
 chrome.runtime.reload = function() {};
 
@@ -2153,6 +2245,7 @@ chrome.runtime.reload = function() {};
  * @param {function(string, !Object=): void} callback Called with "throttled",
  *     "no_update", or "update_available". If an update is available, the object
  *     contains more information about the available update.
+ * @return {undefined}
  */
 chrome.runtime.requestUpdateCheck = function(callback) {};
 
@@ -2160,20 +2253,20 @@ chrome.runtime.requestUpdateCheck = function(callback) {};
 /**
  * Restart the ChromeOS device when the app runs in kiosk mode. Otherwise, it's
  * no-op.
+ * @return {undefined}
  */
 chrome.runtime.restart = function() {};
 
 
 /**
- * @param {string|!Object.<string>=} opt_extensionIdOrConnectInfo Either the
- *     extensionId to connect to, in which case connectInfo params can be
- *     passed in the next optional argument, or the connectInfo params.
- * @param {!Object.<string>=} opt_connectInfo The connectInfo object,
- *     if arg1 was the extensionId to connect to.
- * @return {!Port} New port.
+ * @see https://developer.chrome.com/extensions/runtime#method-restartAfterDelay
+ * @param {number} seconds Time to wait in seconds before rebooting the device,
+ *     or -1 to cancel a scheduled reboot.
+ * @param {function():void=} opt_callback A callback to be invoked when a
+ *     restart request was successfully rescheduled.
+ * @return {undefined}
  */
-chrome.runtime.connect = function(
-    opt_extensionIdOrConnectInfo, opt_connectInfo) {};
+chrome.runtime.restartAfterDelay = function(seconds, opt_callback) {};
 
 
 /**
@@ -2186,27 +2279,6 @@ chrome.runtime.connectNative = function(application) {};
 
 
 /**
- * @param {string|*} extensionIdOrMessage Either the extensionId to send the
- *     message to, in which case the message is passed as the next arg, or the
- *     message itself.
- * @param {(*|Object|function(*): void)=} opt_messageOrOptsOrCallback
- *     One of:
- *     The message, if arg1 was the extensionId.
- *     The options for message sending, if arg1 was the message and this
- *     argument is not a function.
- *     The callback, if arg1 was the message and this argument is a function.
- * @param {(Object|function(*): void)=} opt_optsOrCallback
- *     Either the options for message sending, if arg2 was the message,
- *     or the callback.
- * @param {function(*): void=} opt_callback The callback function which
- *     takes a JSON response object sent by the handler of the request.
- */
-chrome.runtime.sendMessage = function(
-    extensionIdOrMessage, opt_messageOrOptsOrCallback, opt_optsOrCallback,
-    opt_callback) {};
-
-
-/**
  * @see http://developer.chrome.com/extensions/runtime.html#method-sendNativeMessage
  * @param {string} application Name of the registered native messaging host to
  *     connect to, like 'com.google.your_product'.
@@ -2216,6 +2288,7 @@ chrome.runtime.sendMessage = function(
  *     the native messaging host. If an error occurs while connecting to the
  *     native messaging host, the callback will be called with no arguments and
  *     chrome.runtime.lastError will be set to the error message.
+ * @return {undefined}
  */
 chrome.runtime.sendNativeMessage = function(
     application, message, opt_callback) {};
@@ -2224,12 +2297,14 @@ chrome.runtime.sendNativeMessage = function(
 /**
  *
  * @param {function(!Object)} callback
+ * @return {undefined}
  */
 chrome.runtime.getPlatformInfo = function(callback) {};
 
 
 /**
  * @param {function(!DirectoryEntry)} callback
+ * @return {undefined}
  */
 chrome.runtime.getPackageDirectoryEntry = function(callback) {};
 
@@ -2277,79 +2352,36 @@ chrome.runtime.onRestartRequired;
 
 /**
  * Event whose listeners take a Port parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!Port)>}
  */
 chrome.runtime.PortEvent = function() {};
 
 
 /**
- * @param {function(!Port): void} callback Callback.
- */
-chrome.runtime.PortEvent.prototype.addListener = function(callback) {};
-
-
-/**
- * @param {function(!Port): void} callback Callback.
- */
-chrome.runtime.PortEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {function(!Port): void} callback Callback.
- * @return {boolean}
- */
-chrome.runtime.PortEvent.prototype.hasListener = function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-chrome.runtime.PortEvent.prototype.hasListeners = function() {};
-
-
-
-/**
  * Event whose listeners take a MessageSender and additional parameters.
  * @see http://developer.chrome.com/dev/apps/runtime.html#event-onMessage
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(*, !MessageSender, function(*): void): (boolean|undefined)>}
  */
 chrome.runtime.MessageSenderEvent = function() {};
 
 
 /**
- * @param {function(*, !MessageSender, function(*): void): (boolean|undefined)}
- *     callback Callback.
- */
-chrome.runtime.MessageSenderEvent.prototype.addListener = function(callback) {};
-
-
-/**
- * @param {function(*, !MessageSender, function(*): void): (boolean|undefined)}
- *     callback Callback.
- */
-chrome.runtime.MessageSenderEvent.prototype.removeListener = function(callback)
-    {};
-
-
-/**
- * @param {function(*, !MessageSender, function(*): void): (boolean|undefined)}
- *     callback Callback.
- * @return {boolean}
- */
-chrome.runtime.MessageSenderEvent.prototype.hasListener = function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-chrome.runtime.MessageSenderEvent.prototype.hasListeners = function() {};
-
-
-/**
  * @const
- * @see https://developer.chrome.com/extensions/tabs.html
+ * @see https://developer.chrome.com/extensions/tabs
  */
 chrome.tabs = {};
+
+
+/**
+ * @enum {string}
+ * @see https://developer.chrome.com/extensions/tabs#type-TabStatus
+ */
+chrome.tabs.TabStatus = {
+  COMPLETE: '',
+  LOADING: '',
+};
 
 
 /**
@@ -2381,6 +2413,7 @@ chrome.tabs.InjectDetails;
  * @param {function(string):void=} opt_callback A callback function which
  *     accepts the data URL string of a JPEG encoding of the visible area of the
  *     captured tab.
+ * @return {undefined}
  */
 chrome.tabs.captureVisibleTab = function(windowIdOrOptionsOrCallback,
     opt_optionsOrCallback, opt_callback) {};
@@ -2389,6 +2422,7 @@ chrome.tabs.captureVisibleTab = function(windowIdOrOptionsOrCallback,
 /**
  * @param {number} tabId Tab Id.
  * @param {{name: (string|undefined)}=} connectInfo Info Object.
+ * @return {Port} New port.
  */
 chrome.tabs.connect = function(tabId, connectInfo) {};
 
@@ -2409,6 +2443,7 @@ chrome.tabs.CreateProperties;
 /**
  * @param {!chrome.tabs.CreateProperties} createProperties Info object.
  * @param {function(!Tab): void=} opt_callback The callback function.
+ * @return {undefined}
  */
 chrome.tabs.create = function(createProperties, opt_callback) {};
 
@@ -2421,8 +2456,17 @@ chrome.tabs.create = function(createProperties, opt_callback) {};
  * @param {function(string): void=} opt_callback An optional callback function
  *     that will be invoked with the language of the tab specified as first
  *     argument.
+ * @return {undefined}
  */
 chrome.tabs.detectLanguage = function(tabIdOrCallback, opt_callback) {};
+
+
+/**
+ * @see https://developer.chrome.com/extensions/tabs#method-discard
+ * @param {number|function(!Tab): void} tabIdOrCallback
+ * @param {function(!Tab): void=} opt_callback
+ */
+chrome.tabs.discard;
 
 
 /**
@@ -2431,14 +2475,15 @@ chrome.tabs.detectLanguage = function(tabIdOrCallback, opt_callback) {};
  *     Either the id of the tab in which to run the script, or an object
  *     containing the details of the script to run, in which case the script
  *     will be executed in the active tab of the current window.
- * @param {(!chrome.tabs.InjectDetails|function(!Array.<*>):void)=}
+ * @param {(!chrome.tabs.InjectDetails|function(!Array<*>):void)=}
  *     opt_detailsOrCallback Either an object containing the details of the
  *     script to run, if the tab id was speficied as first argument, or a
  *     callback that will be invoked with the result of the execution of the
  *     script in every injected frame.
- * @param {function(!Array.<*>):void=} opt_callback A callback that will be
+ * @param {function(!Array<*>):void=} opt_callback A callback that will be
  *     invoked with the result of the execution of the script in every
  *     injected frame.
+ * @return {undefined}
  */
 chrome.tabs.executeScript = function(tabIdOrDetails, opt_detailsOrCallback,
     opt_callback) {};
@@ -2447,6 +2492,7 @@ chrome.tabs.executeScript = function(tabIdOrDetails, opt_detailsOrCallback,
 /**
  * @param {number} tabId Tab id.
  * @param {function(!Tab): void} callback Callback.
+ * @return {undefined}
  */
 chrome.tabs.get = function(tabId, callback) {};
 
@@ -2457,14 +2503,16 @@ chrome.tabs.get = function(tabId, callback) {};
  * the Array and Tab in the callback as non-null.
  *
  * @param {number?} windowId Window id.
- * @param {function(Array.<Tab>): void} callback Callback.
+ * @param {function(Array<Tab>): void} callback Callback.
  * @deprecated Please use tabs.query {windowId: windowId}.
+ * @return {undefined}
  */
 chrome.tabs.getAllInWindow = function(windowId, callback) {};
 
 
 /**
  * @param {function(!Tab=): void} callback Callback.
+ * @return {undefined}
  */
 chrome.tabs.getCurrent = function(callback) {};
 
@@ -2477,14 +2525,43 @@ chrome.tabs.getCurrent = function(callback) {};
  * @param {number?} windowId Window id.
  * @param {function(Tab): void} callback Callback.
  * @deprecated Please use tabs.query({active: true}).
+ * @return {undefined}
  */
 chrome.tabs.getSelected = function(windowId, callback) {};
 
 
 /**
+ * @see https://developer.chrome.com/extensions/tabs#method-getZoom
+ * @param {number|function(number): void} tabIdOrCallback
+ * @param {function(number): void=} opt_callback
+ * @return {undefined}
+ */
+chrome.tabs.getZoom = function(tabIdOrCallback, opt_callback) {};
+
+
+/**
+ * @see https://developer.chrome.com/extensions/tabs#type-ZoomSettings
+ * @typedef {?{
+ *   mode: (string|undefined),
+ *   scope: (string|undefined),
+ *   defaultZoomFactor: (number|undefined),
+ * }}
+ */
+chrome.tabs.ZoomSettings;
+
+
+/**
+ * @see https://developer.chrome.com/extensions/tabs#method-getZoomSettings
+ * @param {number|function(!chrome.tabs.ZoomSettings): void} tabIdOrCallback
+ * @param {function(!chrome.tabs.ZoomSettings): void=} opt_callback
+ */
+chrome.tabs.getZoomSettings = function(tabIdOrCallback, opt_callback) {};
+
+
+/**
  * @typedef {?{
  *   windowId: (number|undefined),
- *   tabs: (number|!Array.<number>)
+ *   tabs: (number|!Array<number>)
  * }}
  */
 chrome.tabs.HighlightInfo;
@@ -2494,6 +2571,7 @@ chrome.tabs.HighlightInfo;
  * @param {!chrome.tabs.HighlightInfo} highlightInfo
  * @param {function(!Window): void} callback Callback function invoked
  *    with each appropriate Window.
+ * @return {undefined}
  */
 chrome.tabs.highlight = function(highlightInfo, callback) {};
 
@@ -2510,6 +2588,7 @@ chrome.tabs.highlight = function(highlightInfo, callback) {};
  *     callback that will be invoked after the CSS has been injected.
  * @param {function():void=} opt_callback A callback that will be invoked after
  *     the CSS has been injected.
+ * @return {undefined}
  */
 chrome.tabs.insertCSS = function(tabIdOrDetails, opt_detailsOrCallback,
     opt_callback) {};
@@ -2525,9 +2604,10 @@ chrome.tabs.MoveProperties;
 
 
 /**
- * @param {number|!Array.<number>} tabId Tab id or array of tab ids.
+ * @param {number|!Array<number>} tabId Tab id or array of tab ids.
  * @param {!chrome.tabs.MoveProperties} moveProperties
- * @param {function((!Tab|!Array.<!Tab>)): void=} opt_callback Callback.
+ * @param {function((!Tab|!Array<!Tab>)): void=} opt_callback Callback.
+ * @return {undefined}
  */
 chrome.tabs.move = function(tabId, moveProperties, opt_callback) {};
 
@@ -2536,12 +2616,16 @@ chrome.tabs.move = function(tabId, moveProperties, opt_callback) {};
  * @typedef {?{
  *   active: (boolean|undefined),
  *   pinned: (boolean|undefined),
+ *   audible: (boolean|undefined),
+ *   muted: (boolean|undefined),
  *   highlighted: (boolean|undefined),
+ *   discarded: (boolean|undefined),
+ *   autoDiscardable: (boolean|undefined),
  *   currentWindow: (boolean|undefined),
  *   lastFocusedWindow: (boolean|undefined),
- *   status: (string|undefined),
+ *   status: (!chrome.tabs.TabStatus|string|undefined),
  *   title: (string|undefined),
- *   url: (string|undefined),
+ *   url: (!Array<string>|string|undefined),
  *   windowId: (number|undefined),
  *   windowType: (string|undefined),
  *   index: (number|undefined)
@@ -2552,7 +2636,8 @@ chrome.tabs.QueryInfo;
 
 /**
  * @param {!chrome.tabs.QueryInfo} queryInfo
- * @param {function(!Array.<!Tab>): void} callback Callback.
+ * @param {function(!Array<!Tab>): void} callback Callback.
+ * @return {undefined}
  */
 chrome.tabs.query = function(queryInfo, callback) {};
 
@@ -2562,6 +2647,7 @@ chrome.tabs.query = function(queryInfo, callback) {};
  * @param {number} tabId The ID of the tab which is to be duplicated.
  * @param {(function(!Tab=):void)=} opt_callback A callback to be invoked with
  *     details about the duplicated tab.
+ * @return {undefined}
  */
 chrome.tabs.duplicate = function(tabId, opt_callback) {};
 
@@ -2588,25 +2674,40 @@ chrome.tabs.ReloadProperties;
  *     reload is complete, if no object needs to be specified.
  * @param {function():void=} opt_callback  A callback to be invoked when the
  *     reload is complete.
+ * @return {undefined}
  */
 chrome.tabs.reload = function(opt_tabIdOrReloadPropertiesOrCallback,
     opt_reloadPropertiesOrCallback, opt_callback) {};
 
 
 /**
- * @param {number|!Array.<number>} tabIds A tab ID or an array of tab IDs.
+ * @param {number|!Array<number>} tabIds A tab ID or an array of tab IDs.
  * @param {function(): void=} opt_callback Callback.
+ * @return {undefined}
  */
 chrome.tabs.remove = function(tabIds, opt_callback) {};
 
 
 /**
+ * @typedef {?{
+ *   frameId: (number|undefined)
+ * }}
+ */
+chrome.tabs.SendMessageOptions;
+
+
+/**
  * @param {number} tabId Tab id.
  * @param {*} request The request value of any type.
+ * @param {(!chrome.tabs.SendMessageOptions|function(*): void)=}
+ *     opt_optionsOrCallback The object with an optional "frameId" or the
+ *     callback function.
  * @param {function(*): void=} opt_callback The callback function which
  *     takes a JSON response object sent by the handler of the request.
+ * @return {undefined}
  */
-chrome.tabs.sendMessage = function(tabId, request, opt_callback) {};
+chrome.tabs.sendMessage = function(tabId, request, opt_optionsOrCallback,
+    opt_callback) {};
 
 
 /**
@@ -2615,8 +2716,31 @@ chrome.tabs.sendMessage = function(tabId, request, opt_callback) {};
  * @param {function(*): void=} opt_callback The callback function which
  *     takes a JSON response object sent by the handler of the request.
  * @deprecated Please use runtime.sendMessage.
+ * @return {undefined}
  */
 chrome.tabs.sendRequest = function(tabId, request, opt_callback) {};
+
+
+/**
+ * @see https://developer.chrome.com/extensions/tabs#method-setZoom
+ * @param {number} tabIdOrZoomFactor
+ * @param {(number|function(): void)=} opt_zoomFactorOrCallback
+ * @param {function(): void=} opt_callback
+ * @return {undefined}
+ */
+chrome.tabs.setZoom = function(
+    tabIdOrZoomFactor, opt_zoomFactorOrCallback, opt_callback) {};
+
+
+/**
+ * @see https://developer.chrome.com/extensions/tabs#method-setZoomSettings
+ * @param {number|!chrome.tabs.ZoomSettings} tabIdOrZoomSettings
+ * @param {(!chrome.tabs.ZoomSettings|function(): void)=}
+ *     opt_zoomSettingsOrCallback
+ * @param {function(): void=} opt_callback
+ */
+chrome.tabs.setZoomSettings = function(
+    tabIdOrZoomSettings, opt_zoomSettingsOrCallback, opt_callback) {};
 
 
 /**
@@ -2643,6 +2767,7 @@ chrome.tabs.UpdateProperties;
  *     that will be invoked with information about the tab being updated.
  * @param {function(!Tab=): void=} opt_callback An optional callback that will
  *     be invoked with information about the tab being updated.
+ * @return {undefined}
  */
 chrome.tabs.update = function(tabIdOrUpdateProperties,
     opt_updatePropertiesOrCallback, opt_callback) {};
@@ -2711,6 +2836,13 @@ chrome.tabs.onSelectionChanged;
 
 
 /**
+ * @see https://developer.chrome.com/extensions/tabs#event-onZoomChange
+ * @type {!ChromeObjectEvent}
+ */
+chrome.tabs.onZoomChange;
+
+
+/**
  * @see https://developer.chrome.com/extensions/topSites
  * @const
  */
@@ -2738,6 +2870,7 @@ chrome.topSites.MostVisitedURL.prototype.title;
  * @param {function(!Array<!chrome.topSites.MostVisitedURL>)} callback Invoked
  *     with a list of most visited URLs.
  * @see https://developer.chrome.com/extensions/topSites#method-get
+ * @return {undefined}
  */
 chrome.topSites.get = function(callback) {};
 
@@ -2753,6 +2886,7 @@ chrome.windows = {};
  * @param {Object=} opt_createData May have many keys to specify parameters.
  *     Or the callback.
  * @param {function(ChromeWindow): void=} opt_callback Callback.
+ * @return {undefined}
  */
 chrome.windows.create = function(opt_createData, opt_callback) {};
 
@@ -2762,13 +2896,15 @@ chrome.windows.create = function(opt_createData, opt_callback) {};
  * @param {Object=} opt_getInfo May have 'populate' key. Or the callback.
  * @param {function(!ChromeWindow): void=} opt_callback Callback when
  *     opt_getInfo is an object.
+ * @return {undefined}
  */
 chrome.windows.get = function(id, opt_getInfo, opt_callback) {};
 
 
 /**
  * @param {Object=} opt_getInfo May have 'populate' key. Or the callback.
- * @param {function(!Array.<!ChromeWindow>): void=} opt_callback Callback.
+ * @param {function(!Array<!ChromeWindow>): void=} opt_callback Callback.
+ * @return {undefined}
  */
 chrome.windows.getAll = function(opt_getInfo, opt_callback) {};
 
@@ -2776,6 +2912,7 @@ chrome.windows.getAll = function(opt_getInfo, opt_callback) {};
 /**
  * @param {Object=} opt_getInfo May have 'populate' key. Or the callback.
  * @param {function(ChromeWindow): void=} opt_callback Callback.
+ * @return {undefined}
  */
 chrome.windows.getCurrent = function(opt_getInfo, opt_callback) { };
 
@@ -2783,6 +2920,7 @@ chrome.windows.getCurrent = function(opt_getInfo, opt_callback) { };
 /**
  * @param {Object=} opt_getInfo May have 'populate' key. Or the callback.
  * @param {function(ChromeWindow): void=} opt_callback Callback.
+ * @return {undefined}
  */
 chrome.windows.getLastFocused = function(opt_getInfo, opt_callback) { };
 
@@ -2790,6 +2928,7 @@ chrome.windows.getLastFocused = function(opt_getInfo, opt_callback) { };
 /**
  * @param {number} tabId Tab Id.
  * @param {function(): void=} opt_callback Callback.
+ * @return {undefined}
  */
 chrome.windows.remove = function(tabId, opt_callback) {};
 
@@ -2798,7 +2937,8 @@ chrome.windows.remove = function(tabId, opt_callback) {};
  * @param {number} tabId Tab Id.
  * @param {Object} updateProperties An object which may have many keys for
  *     various options.
- * @param {function(): void=} opt_callback Callback.
+ * @param {function(!ChromeWindow): void=} opt_callback Callback.
+ * @return {undefined}
  */
 chrome.windows.update = function(tabId, updateProperties, opt_callback) {};
 
@@ -2837,16 +2977,17 @@ chrome.i18n = {};
 
 
 /**
- * @param {function(Array.<string>): void} callback The callback function which
+ * @param {function(Array<string>): void} callback The callback function which
  *     accepts an array of the accept languages of the browser, such as
  *     'en-US','en','zh-CN'.
+ * @return {undefined}
  */
 chrome.i18n.getAcceptLanguages = function(callback) {};
 
 
 /**
  * @param {string} messageName
- * @param {(string|Array.<string>)=} opt_args
+ * @param {(string|Array<string>)=} opt_args
  * @return {string}
  */
 chrome.i18n.getMessage = function(messageName, opt_args) {};
@@ -2859,6 +3000,15 @@ chrome.i18n.getUILanguage = function() {};
 
 
 /**
+ * @param {string} text User input string to be detected.
+ * @param {function(!Object)} callback The callback for passing back the
+ *     language detection result.
+ * @return {undefined}
+ */
+chrome.i18n.detectLanguage = function(text, callback) {};
+
+
+/**
  * @const
  * @see https://developer.chrome.com/extensions/pageAction.html
  */
@@ -2867,6 +3017,7 @@ chrome.pageAction = {};
 
 /**
  * @param {number} tabId Tab Id.
+ * @return {undefined}
  */
 chrome.pageAction.hide = function(tabId) {};
 
@@ -2874,24 +3025,28 @@ chrome.pageAction.hide = function(tabId) {};
 /**
  * @param {Object} details An object which has 'tabId' and either
  *     'imageData' or 'path'.
+ * @return {undefined}
  */
 chrome.pageAction.setIcon = function(details) {};
 
 
 /**
  * @param {Object} details An object which may have 'popup' or 'tabId' as keys.
+ * @return {undefined}
  */
 chrome.pageAction.setPopup = function(details) {};
 
 
 /**
  * @param {Object} details An object which has 'tabId' and 'title'.
+ * @return {undefined}
  */
 chrome.pageAction.setTitle = function(details) {};
 
 
 /**
  * @param {number} tabId Tab Id.
+ * @return {undefined}
  */
 chrome.pageAction.show = function(tabId) {};
 
@@ -2902,16 +3057,19 @@ chrome.pageAction.onClicked;
 
 /**
  * @const
+ * @see https://developer.chrome.com/apps/browser
  */
 chrome.browser = {};
 
 
 /**
  * @param {{url: string}} details An object with a single 'url' key.
- * @param {function(): void} callback The callback function. If an error occurs
- * opening the URL, chrome.runtime.lastError will be set to the error message.
+ * @param {(function(): void)=} opt_callback The callback function. If an error
+ * occurs opening the URL, chrome.runtime.lastError will be set to the error
+ * message.
+ * @return {undefined}
  */
-chrome.browser.openTab = function(details, callback) {};
+chrome.browser.openTab = function(details, opt_callback) {};
 
 
 /**
@@ -2938,8 +3096,8 @@ chrome.browserAction.ColorArray;
 
 /**
  * @typedef {{
- *   imageData: (!ImageData|!Object.<number, !ImageData>|undefined),
- *   path: (string|!Object.<number, string>|undefined),
+ *   imageData: (!ImageData|!Object<number, !ImageData>|undefined),
+ *   path: (string|!Object<number, string>|undefined),
  *   tabId: (number|undefined)
  * }}
  */
@@ -2952,6 +3110,7 @@ chrome.browserAction.SetIconImageData;
  *   tabId: (number|undefined)
  * }} details
  * @see https://developer.chrome.com/extensions/browserAction#method-setTitle
+ * @return {undefined}
  */
 chrome.browserAction.setTitle = function(details) {};
 
@@ -2960,6 +3119,7 @@ chrome.browserAction.setTitle = function(details) {};
  * @param {!chrome.browserAction.Tab} details
  * @param {function(string): void} callback
  * @see https://developer.chrome.com/extensions/browserAction#method-getTitle
+ * @return {undefined}
  */
 chrome.browserAction.getTitle = function(details, callback) {};
 
@@ -2968,6 +3128,7 @@ chrome.browserAction.getTitle = function(details, callback) {};
  * @param {!chrome.browserAction.SetIconImageData} details
  * @param {function(): void=} opt_callback
  * @see https://developer.chrome.com/extensions/browserAction#method-setIcon
+ * @return {undefined}
  */
 chrome.browserAction.setIcon = function(details, opt_callback) {};
 
@@ -2978,6 +3139,7 @@ chrome.browserAction.setIcon = function(details, opt_callback) {};
  *   popup: string
  * }} details
  * @see https://developer.chrome.com/extensions/browserAction#method-setPopup
+ * @return {undefined}
  */
 chrome.browserAction.setPopup = function(details) {};
 
@@ -2986,6 +3148,7 @@ chrome.browserAction.setPopup = function(details) {};
  * @param {!chrome.browserAction.Tab} details
  * @param {function(string): void} callback
  * @see https://developer.chrome.com/extensions/browserAction#method-getPopup
+ * @return {undefined}
  */
 chrome.browserAction.getPopup = function(details, callback) {};
 
@@ -2996,6 +3159,7 @@ chrome.browserAction.getPopup = function(details, callback) {};
  *   tabId: (number|undefined)
  * }} details
  * @see https://developer.chrome.com/extensions/browserAction#method-setBadgeText
+ * @return {undefined}
  */
 chrome.browserAction.setBadgeText = function(details) {};
 
@@ -3004,6 +3168,7 @@ chrome.browserAction.setBadgeText = function(details) {};
  * @param {!chrome.browserAction.Tab} details
  * @param {function(string): void} callback
  * @see https://developer.chrome.com/extensions/browserAction#method-getBadgeText
+ * @return {undefined}
  */
 chrome.browserAction.getBadgeText = function(details, callback) {};
 
@@ -3014,6 +3179,7 @@ chrome.browserAction.getBadgeText = function(details, callback) {};
  *   tabId: (number|undefined)
  * }} details
  * @see https://developer.chrome.com/extensions/browserAction#method-setBadgeBackgroundColor
+ * @return {undefined}
  */
 chrome.browserAction.setBadgeBackgroundColor = function(details) {};
 
@@ -3022,6 +3188,7 @@ chrome.browserAction.setBadgeBackgroundColor = function(details) {};
  * @param {!chrome.browserAction.Tab} details
  * @param {function(chrome.browserAction.ColorArray): void} callback
  * @see https://developer.chrome.com/extensions/browserAction#method-getBadgeBackgroundColor
+ * @return {undefined}
  */
 chrome.browserAction.getBadgeBackgroundColor = function(details, callback) {};
 
@@ -3029,6 +3196,7 @@ chrome.browserAction.getBadgeBackgroundColor = function(details, callback) {};
 /**
  * @param {number=} opt_tabId
  * @see https://developer.chrome.com/extensions/browserAction#method-enable
+ * @return {undefined}
  */
 chrome.browserAction.enable = function(opt_tabId) {};
 
@@ -3036,41 +3204,16 @@ chrome.browserAction.enable = function(opt_tabId) {};
 /**
  * @param {number=} opt_tabId
  * @see https://developer.chrome.com/extensions/browserAction#method-disable
+ * @return {undefined}
  */
 chrome.browserAction.disable = function(opt_tabId) {};
 
 
 /**
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!Tab)>}
  */
 chrome.browserAction.BrowserActionTabEvent = function() {};
-
-
-/**
- * @param {function(!Tab): void} callback
- */
-chrome.browserAction.BrowserActionTabEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!Tab): void} callback
- */
-chrome.browserAction.BrowserActionTabEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!Tab): void} callback
- * @return {boolean}
- */
-chrome.browserAction.BrowserActionTabEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.browserAction.BrowserActionTabEvent.prototype.hasListeners =
-    function() {};
 
 
 /**
@@ -3111,53 +3254,53 @@ chrome.bookmarks.SearchDetails;
 
 
 /**
- * @param {(string|Array.<string>)} idOrIdList
- * @param {function(Array.<BookmarkTreeNode>): void} callback The
+ * @param {(string|Array<string>)} idOrIdList
+ * @param {function(Array<BookmarkTreeNode>): void} callback The
  *     callback function which accepts an array of BookmarkTreeNode.
- * @return {Array.<BookmarkTreeNode>}
+ * @return {Array<BookmarkTreeNode>}
  */
 chrome.bookmarks.get = function(idOrIdList, callback) {};
 
 
 /**
  * @param {string} id
- * @param {function(Array.<BookmarkTreeNode>): void} callback The
+ * @param {function(Array<BookmarkTreeNode>): void} callback The
  *     callback function which accepts an array of BookmarkTreeNode.
- * @return {Array.<BookmarkTreeNode>}
+ * @return {Array<BookmarkTreeNode>}
  */
 chrome.bookmarks.getChildren = function(id, callback) {};
 
 
 /**
  * @param {number} numberOfItems The number of items to return.
- * @param {function(Array.<BookmarkTreeNode>): void} callback The
+ * @param {function(Array<BookmarkTreeNode>): void} callback The
  *     callback function which accepts an array of BookmarkTreeNode.
- * @return {Array.<BookmarkTreeNode>}
+ * @return {Array<BookmarkTreeNode>}
  */
 chrome.bookmarks.getRecent = function(numberOfItems, callback) {};
 
 
 /**
- * @param {function(Array.<BookmarkTreeNode>): void} callback The
+ * @param {function(Array<BookmarkTreeNode>): void} callback The
  *     callback function which accepts an array of BookmarkTreeNode.
- * @return {Array.<BookmarkTreeNode>}
+ * @return {Array<BookmarkTreeNode>}
  */
 chrome.bookmarks.getTree = function(callback) {};
 
 
 /**
  * @param {string} id The ID of the root of the subtree to retrieve.
- * @param {function(Array.<BookmarkTreeNode>): void} callback The
+ * @param {function(Array<BookmarkTreeNode>): void} callback The
  *     callback function which accepts an array of BookmarkTreeNode.
- * @return {Array.<BookmarkTreeNode>}
+ * @return {Array<BookmarkTreeNode>}
  */
 chrome.bookmarks.getSubTree = function(id, callback) {};
 
 
 /**
  * @param {string|!chrome.bookmarks.SearchDetails} query
- * @param {function(Array.<BookmarkTreeNode>): void} callback
- * @return {Array.<BookmarkTreeNode>}
+ * @param {function(Array<BookmarkTreeNode>): void} callback
+ * @return {Array<BookmarkTreeNode>}
  */
 chrome.bookmarks.search = function(query, callback) {};
 
@@ -3166,6 +3309,7 @@ chrome.bookmarks.search = function(query, callback) {};
  * @param {chrome.bookmarks.CreateDetails} bookmark
  * @param {function(BookmarkTreeNode): void=} opt_callback The
  *     callback function which accepts a BookmarkTreeNode object.
+ * @return {undefined}
  */
 chrome.bookmarks.create = function(bookmark, opt_callback) {};
 
@@ -3176,6 +3320,7 @@ chrome.bookmarks.create = function(bookmark, opt_callback) {};
  *     optional 'index'.
  * @param {function(BookmarkTreeNode): void=} opt_callback
  *     The callback function which accepts a BookmarkTreeNode object.
+ * @return {undefined}
  */
 chrome.bookmarks.move = function(id, destination, opt_callback) {};
 
@@ -3185,6 +3330,7 @@ chrome.bookmarks.move = function(id, destination, opt_callback) {};
  * @param {Object} changes An object which may have 'title' as a key.
  * @param {function(BookmarkTreeNode): void=} opt_callback The
  *     callback function which accepts a BookmarkTreeNode object.
+ * @return {undefined}
  */
 chrome.bookmarks.update = function(id, changes, opt_callback) {};
 
@@ -3192,6 +3338,7 @@ chrome.bookmarks.update = function(id, changes, opt_callback) {};
 /**
  * @param {string} id
  * @param {function(): void=} opt_callback
+ * @return {undefined}
  */
 chrome.bookmarks.remove = function(id, opt_callback) {};
 
@@ -3199,18 +3346,21 @@ chrome.bookmarks.remove = function(id, opt_callback) {};
 /**
  * @param {string} id
  * @param {function(): void=} opt_callback
+ * @return {undefined}
  */
 chrome.bookmarks.removeTree = function(id, opt_callback) {};
 
 
 /**
  * @param {function(): void=} opt_callback
+ * @return {undefined}
  */
 chrome.bookmarks.import = function(opt_callback) {};
 
 
 /**
  * @param {function(): void=} opt_callback
+ * @return {undefined}
  */
 chrome.bookmarks.export = function(opt_callback) {};
 
@@ -3260,61 +3410,23 @@ chrome.omnibox = {};
 
 
 
-/** @constructor */
+/**
+ * @interface
+ * @extends {ChromeBaseEvent<function(string, function(!Array<!SuggestResult>))>}
+ */
 chrome.omnibox.InputChangedEvent = function() {};
 
 
 /**
- * @param {function(string, function(!Array.<!SuggestResult>)): void} callback
+ * @interface
+ * @extends {ChromeBaseEvent<function(string, string)>}
  */
-chrome.omnibox.InputChangedEvent.prototype.addListener = function(callback) {};
-
-
-/**
- * @param {function(string, function(!Array.<!SuggestResult>)): void} callback
- */
-chrome.omnibox.InputChangedEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(string, function(!Array.<!SuggestResult>)): void} callback
- * @return {boolean}
- */
-chrome.omnibox.InputChangedEvent.prototype.hasListener = function(callback) {};
-
-
-/** @return {boolean} */
-chrome.omnibox.InputChangedEvent.prototype.hasListeners = function() {};
-
-
-
-/** @constructor */
 chrome.omnibox.InputEnteredEvent = function() {};
-
-
-/** @param {function(string, string): void} callback */
-chrome.omnibox.InputEnteredEvent.prototype.addListener = function(callback) {};
-
-
-/** @param {function(string, string): void} callback */
-chrome.omnibox.InputEnteredEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(string, string): void} callback
- * @return {boolean}
- */
-chrome.omnibox.InputEnteredEvent.prototype.hasListener = function(callback) {};
-
-
-/** @return {boolean} */
-chrome.omnibox.InputEnteredEvent.prototype.hasListeners = function() {};
 
 
 /**
  * @param {{description: string}} suggestion A partial SuggestResult object.
+ * @return {undefined}
  */
 chrome.omnibox.setDefaultSuggestion = function(suggestion) {};
 
@@ -3348,11 +3460,11 @@ chrome.contextMenus = {};
  *   id: (string|undefined),
  *   title: (string|undefined),
  *   checked: (boolean|undefined),
- *   contexts: (!Array.<string>|undefined),
+ *   contexts: (!Array<string>|undefined),
  *   onclick: (function(!Object, !Tab)|undefined),
  *   parentId: (number|string|undefined),
- *   documentUrlPatterns: (!Array.<string>|undefined),
- *   targetUrlPatterns: (!Array.<string>|undefined),
+ *   documentUrlPatterns: (!Array<string>|undefined),
+ *   targetUrlPatterns: (!Array<string>|undefined),
  *   enabled: (boolean|undefined)
  * }}
  * @see https://developer.chrome.com/extensions/contextMenus#method-create
@@ -3365,11 +3477,11 @@ chrome.contextMenus.CreateProperties;
  *   type: (string|undefined),
  *   title: (string|undefined),
  *   checked: (boolean|undefined),
- *   contexts: (!Array.<string>|undefined),
+ *   contexts: (!Array<string>|undefined),
  *   onclick: (function(!Object, !Tab)|undefined),
  *   parentId: (number|string|undefined),
- *   documentUrlPatterns: (!Array.<string>|undefined),
- *   targetUrlPatterns: (!Array.<string>|undefined),
+ *   documentUrlPatterns: (!Array<string>|undefined),
+ *   targetUrlPatterns: (!Array<string>|undefined),
  *   enabled: (boolean|undefined)
  * }}
  * @see https://developer.chrome.com/extensions/contextMenus#method-update
@@ -3391,6 +3503,7 @@ chrome.contextMenus.create = function(createProperties, opt_callback) {};
  * @param {!chrome.contextMenus.UpdateProperties} updateProperties
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/extensions/contextMenus#method-update
+ * @return {undefined}
  */
 chrome.contextMenus.update = function(id, updateProperties, opt_callback) {};
 
@@ -3399,6 +3512,7 @@ chrome.contextMenus.update = function(id, updateProperties, opt_callback) {};
  * @param {(number|string)} menuItemId
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/extensions/contextMenus#method-remove
+ * @return {undefined}
  */
 chrome.contextMenus.remove = function(menuItemId, opt_callback) {};
 
@@ -3406,41 +3520,17 @@ chrome.contextMenus.remove = function(menuItemId, opt_callback) {};
 /**
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/extensions/contextMenus#method-removeAll
+ * @return {undefined}
  */
 chrome.contextMenus.removeAll = function(opt_callback) {};
 
 
 /**
  * @interface
+ * @extends {ChromeBaseEvent<function(!Object, !Tab=)>}
  * @see https://developer.chrome.com/extensions/contextMenus#event-onClicked
  */
 chrome.contextMenus.ClickedEvent = function() {};
-
-
-/**
- * @param {function(!Object, !Tab=)} callback
- */
-chrome.contextMenus.ClickedEvent.prototype.addListener = function(callback) {};
-
-
-/**
- * @param {function(!Object, !Tab=)} callback
- */
-chrome.contextMenus.ClickedEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!Object, !Tab=)} callback
- * @return {boolean}
- */
-chrome.contextMenus.ClickedEvent.prototype.hasListener = function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-chrome.contextMenus.ClickedEvent.prototype.hasListeners = function() {};
 
 
 /**
@@ -3476,19 +3566,22 @@ chrome.cookies.CookieIdentifier;
 /**
  * @param {!chrome.cookies.CookieIdentifier} details
  * @param {function(Cookie=): void} callback
+ * @return {undefined}
  */
 chrome.cookies.get = function(details, callback) {};
 
 
 /**
  * @param {Object} details
- * @param {function(Array.<Cookie>): void} callback
+ * @param {function(Array<Cookie>): void} callback
+ * @return {undefined}
  */
 chrome.cookies.getAll = function(details, callback) {};
 
 
 /**
- * @param {function(Array.<CookieStore>): void} callback
+ * @param {function(Array<CookieStore>): void} callback
+ * @return {undefined}
  */
 chrome.cookies.getAllCookieStores = function(callback) {};
 
@@ -3498,6 +3591,7 @@ chrome.cookies.getAllCookieStores = function(callback) {};
  * @param {function(chrome.cookies.CookieIdentifier): void=} opt_callback If
  *     removal failed for any reason, the parameter will be "null", and
  *     "chrome.runtime.lastError" will be set.
+ * @return {undefined}
  */
 chrome.cookies.remove = function(details, opt_callback) {};
 
@@ -3523,6 +3617,7 @@ chrome.cookies.CookieSetDetails;
  * @param {function(Cookie): void=} opt_callback If setting failed for any
  *    reason, the parameter will be "null", and "chrome.runtime.lastError" will
  *    be set.
+ * @return {undefined}
  */
 chrome.cookies.set = function(details, opt_callback) {};
 
@@ -3567,28 +3662,31 @@ chrome.management.InstallOptions;
  * @param {string} id
  * @param {function(!ExtensionInfo): void=} opt_callback Optional callback
  *     function.
+ * @return {undefined}
  */
 chrome.management.get = function(id, opt_callback) {};
 
 
 /**
- * @param {function(!Array.<!ExtensionInfo>): void=} opt_callback Optional
+ * @param {function(!Array<!ExtensionInfo>): void=} opt_callback Optional
  *     callback function.
- * @return {!Array.<!ExtensionInfo>}
+ * @return {!Array<!ExtensionInfo>}
  */
 chrome.management.getAll = function(opt_callback) {};
 
 
 /**
  * @param {string} id The id of an already installed extension.
- * @param {function(!Array.<string>)=} opt_callback Optional callback function.
+ * @param {function(!Array<string>)=} opt_callback Optional callback function.
+ * @return {undefined}
  */
 chrome.management.getPermissionWarningsById = function(id, opt_callback) {};
 
 
 /**
  * @param {string} manifestStr Extension's manifest JSON string.
- * @param {function(!Array.<string>)=} opt_callback Optional callback function.
+ * @param {function(!Array<string>)=} opt_callback Optional callback function.
+ * @return {undefined}
  */
 chrome.management.getPermissionWarningsByManifest =
     function(manifestStr, opt_callback) {};
@@ -3597,6 +3695,7 @@ chrome.management.getPermissionWarningsByManifest =
 /**
  * @param {string} id The id of an already installed extension.
  * @param {function(): void=} opt_callback Optional callback function.
+ * @return {undefined}
  */
 chrome.management.launchApp = function(id, opt_callback) {};
 
@@ -3605,6 +3704,7 @@ chrome.management.launchApp = function(id, opt_callback) {};
  * @param {string} id The id of an already installed extension.
  * @param {boolean} enabled Whether this item should be enabled.
  * @param {function(): void=} opt_callback Optional callback function.
+ * @return {undefined}
  */
 chrome.management.setEnabled = function(id, enabled, opt_callback) {};
 
@@ -3615,6 +3715,7 @@ chrome.management.setEnabled = function(id, enabled, opt_callback) {};
  *     opt_optionsOrCallback An optional uninstall options object or an optional
  *     callback function.
  * @param {function(): void=} opt_callback Optional callback function.
+ * @return {undefined}
  */
 chrome.management.uninstall =
     function(id, opt_optionsOrCallback, opt_callback) {};
@@ -3625,6 +3726,7 @@ chrome.management.uninstall =
  *     opt_optionsOrCallback An optional uninstall options object or an optional
  *     callback function.
  * @param {function(): void=} opt_callback An optional callback function.
+ * @return {undefined}
  */
 chrome.management.uninstallSelf =
     function(opt_optionsOrCallback, opt_callback) {};
@@ -3633,6 +3735,7 @@ chrome.management.uninstallSelf =
 /**
  * @param {string} id The id of an already installed extension.
  * @param {function(): void=} opt_callback Optional callback function.
+ * @return {undefined}
  */
 chrome.management.createAppShortcut = function(id, opt_callback) {};
 
@@ -3643,6 +3746,7 @@ chrome.management.createAppShortcut = function(id, opt_callback) {};
  *     value is in ExtensionInfo.availableLaunchTypes because the available
  *     launch types vary on different platforms and configurations.
  * @param {function(): void=} opt_callback Optional callback function.
+ * @return {undefined}
  */
 chrome.management.setLaunchType = function(id, launchType, opt_callback) {};
 
@@ -3653,6 +3757,7 @@ chrome.management.setLaunchType = function(id, launchType, opt_callback) {};
  * @param {string} title The title of the generated app.
  * @param {function(!ExtensionInfo): void=} opt_callback Optional callback
  *     function.
+ * @return {undefined}
  */
 chrome.management.generateAppForLink = function(url, title, opt_callback) {};
 
@@ -3684,6 +3789,7 @@ chrome.idle = {};
  * @param {number} thresholdSeconds Threshold in seconds, used to determine
  *     when a machine is in the idle state.
  * @param {function(string): void} callback Callback to handle the state.
+ * @return {undefined}
  */
 chrome.idle.queryState = function(thresholdSeconds, callback) {};
 
@@ -3691,6 +3797,7 @@ chrome.idle.queryState = function(thresholdSeconds, callback) {};
 /**
  * @param {number} intervalInSeconds Threshold, in seconds, used to determine
  *    when the system is in an idle state.
+ * @return {undefined}
  */
 chrome.idle.setDetectionInterval = function(intervalInSeconds) {};
 
@@ -3751,14 +3858,15 @@ TtsVoice.prototype.gender;
 TtsVoice.prototype.extensionId;
 
 
-/** @type {Array.<string>} */
+/** @type {Array<string>} */
 TtsVoice.prototype.eventTypes;
 
 
 /**
  * Gets an array of all available voices.
- * @param {function(Array.<TtsVoice>)=} opt_callback An optional callback
+ * @param {function(Array<TtsVoice>)=} opt_callback An optional callback
  *     function.
+ * @return {undefined}
  */
 chrome.tts.getVoices = function(opt_callback) {};
 
@@ -3766,6 +3874,7 @@ chrome.tts.getVoices = function(opt_callback) {};
 /**
  * Checks if the engine is currently speaking.
  * @param {function(boolean)=} opt_callback The callback function.
+ * @return {undefined}
  */
 chrome.tts.isSpeaking = function(opt_callback) {};
 
@@ -3778,12 +3887,14 @@ chrome.tts.isSpeaking = function(opt_callback) {};
  *     32,768 characters.
  * @param {Object=} opt_options The speech options.
  * @param {function()=} opt_callback Called right away, before speech finishes.
+ * @return {undefined}
  */
 chrome.tts.speak = function(utterance, opt_options, opt_callback) {};
 
 
 /**
  * Stops any current speech.
+ * @return {undefined}
  */
 chrome.tts.stop = function() {};
 
@@ -3844,7 +3955,7 @@ chrome.fileBrowserHandler = {};
 /**
  * @typedef {?{
  *   suggestedName: string,
- *   allowedFileExtensions: (!Array.<string>|undefined)
+ *   allowedFileExtensions: (!Array<string>|undefined)
  * }}
  */
 chrome.fileBrowserHandler.SelectFileSelectionParams;
@@ -3856,43 +3967,17 @@ chrome.fileBrowserHandler.SelectFileSelectionParams;
  * @param {!chrome.fileBrowserHandler.SelectFileSelectionParams} selectionParams
  *     Parameters that will be used while selecting the file.
  * @param {function(!Object)} callback Function called upon completion.
+ * @return {undefined}
  */
 chrome.fileBrowserHandler.selectFile = function(selectionParams, callback) {};
 
 
 /**
  * @interface
+ * @extends {ChromeBaseEvent<function(string, !FileHandlerExecuteEventDetails)>}
  * @see https://developer.chrome.com/extensions/fileBrowserHandler#event-onExecute
  */
 chrome.fileBrowserHandler.ExecuteEvent = function() {};
-
-
-/**
- * @param {function(string, !FileHandlerExecuteEventDetails)} callback
- */
-chrome.fileBrowserHandler.ExecuteEvent.prototype.addListener = function(
-    callback) {};
-
-
-/**
- * @param {function(string, !FileHandlerExecuteEventDetails)} callback
- */
-chrome.fileBrowserHandler.ExecuteEvent.prototype.removeListener = function(
-    callback) {};
-
-
-/**
- * @param {function(string, !FileHandlerExecuteEventDetails)} callback
- * @return {boolean}
- */
-chrome.fileBrowserHandler.ExecuteEvent.prototype.hasListener = function(
-    callback) {};
-
-
-/**
- * @return {boolean}
- */
-chrome.fileBrowserHandler.ExecuteEvent.prototype.hasListeners = function() {};
 
 
 /**
@@ -3922,10 +4007,11 @@ chrome.gcm.MAX_MESSAGE_SIZE;
  * the callback. If register is called again with the same list of senderIds,
  * the same registration ID will be returned.
  * @see https://developer.chrome.com/extensions/gcm#method-register
- * @param {!Array.<string>} senderIds A list of server IDs that are allowed to
+ * @param {!Array<string>} senderIds A list of server IDs that are allowed to
  *     send messages to the application.
  * @param {function(string): void} callback Function called when
  *     registration completes with registration ID as argument.
+ * @return {undefined}
  */
 chrome.gcm.register = function(senderIds, callback) {};
 
@@ -3934,6 +4020,7 @@ chrome.gcm.register = function(senderIds, callback) {};
  * Unregisters the application from GCM.
  * @see https://developer.chrome.com/extensions/gcm#method-unregister
  * @param {function(): void} callback Called when unregistration is done.
+ * @return {undefined}
  */
 chrome.gcm.unregister = function(callback) {};
 
@@ -3943,6 +4030,7 @@ chrome.gcm.unregister = function(callback) {};
  * @see https://developer.chrome.com/extensions/gcm#method-send
  * @param {!chrome.gcm.Message} message Message to be sent.
  * @param {function(string): void} callback Called with message ID.
+ * @return {undefined}
  */
 chrome.gcm.send = function(message, callback) {};
 
@@ -3953,7 +4041,7 @@ chrome.gcm.send = function(message, callback) {};
  *   destinationId: string,
  *   messageId: string,
  *   timeToLive: (number|undefined),
- *   data: !Object.<string, string>
+ *   data: !Object<string, string>
  * }}
  */
 chrome.gcm.Message;
@@ -3986,66 +4074,17 @@ chrome.gcm.onSendError;
 
 
 /**
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!Object)>}
  */
 chrome.gcm.OnMessageEvent = function() {};
 
 
 /**
- * @param {function(!Object): void} callback Callback.
- */
-chrome.gcm.OnMessageEvent.prototype.addListener = function(callback) {};
-
-
-/**
- * @param {function(!Object): void} callback Callback.
- */
-chrome.gcm.OnMessageEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {function(!Object): void} callback Callback.
- * @return {boolean}
- */
-chrome.gcm.OnMessageEvent.prototype.hasListener = function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-chrome.gcm.OnMessageEvent.prototype.hasListeners = function() {};
-
-
-
-/**
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!Object)>}
  */
 chrome.gcm.OnSendErrorEvent = function() {};
-
-
-/**
- * @param {function(!Object): void} callback Callback.
- */
-chrome.gcm.OnSendErrorEvent.prototype.addListener = function(callback) {};
-
-
-/**
- * @param {function(!Object): void} callback Callback.
- */
-chrome.gcm.OnSendErrorEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {function(!Object): void} callback Callback.
- * @return {boolean}
- */
-chrome.gcm.OnSendErrorEvent.prototype.hasListener = function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-chrome.gcm.OnSendErrorEvent.prototype.hasListeners = function() {};
 
 
 /**
@@ -4056,45 +4095,49 @@ chrome.history = {};
 
 
 /**
- * @param {Object.<string, string>} details Object with a 'url' key.
+ * @param {Object<string, string>} details Object with a 'url' key.
+ * @return {undefined}
  */
 chrome.history.addUrl = function(details) {};
 
 
 /**
  * @param {function(): void} callback Callback function.
+ * @return {undefined}
  */
 chrome.history.deleteAll = function(callback) {};
 
 
 /**
- * @param {Object.<string, string>} range Object with 'startTime'
+ * @param {Object<string, string>} range Object with 'startTime'
  *     and 'endTime' keys.
  * @param {function(): void} callback Callback function.
+ * @return {undefined}
  */
 chrome.history.deleteRange = function(range, callback) {};
 
 
 /**
- * @param {Object.<string, string>} details Object with a 'url' key.
+ * @param {Object<string, string>} details Object with a 'url' key.
+ * @return {undefined}
  */
 chrome.history.deleteUrl = function(details) {};
 
 
 /**
- * @param {Object.<string, string>} details Object with a 'url' key.
- * @param {function(!Array.<!VisitItem>): void} callback Callback function.
- * @return {!Array.<!VisitItem>}
+ * @param {Object<string, string>} details Object with a 'url' key.
+ * @param {function(!Array<!VisitItem>): void} callback Callback function.
+ * @return {!Array<!VisitItem>}
  */
 chrome.history.getVisits = function(details, callback) {};
 
 
 /**
- * @param {Object.<string, string>} query Object with a 'text' (string)
+ * @param {Object<string, string>} query Object with a 'text' (string)
  *     key and optional 'startTime' (number), 'endTime' (number) and
  *     'maxResults' keys.
- * @param {function(!Array.<!HistoryItem>): void} callback Callback function.
- * @return {!Array.<!HistoryItem>}
+ * @param {function(!Array<!HistoryItem>): void} callback Callback function.
+ * @return {!Array<!HistoryItem>}
  */
 chrome.history.search = function(query, callback) {};
 
@@ -4114,48 +4157,86 @@ chrome.history.onVisited;
 chrome.identity = {};
 
 
+/** @typedef {?{id: string}} */
+chrome.identity.AccountInfo;
+
+
 /**
- * @param {(chrome.identity.TokenDetails|function(string=): void)}
+ * @param {function(!Array<!chrome.identity.AccountInfo>): void} callback
+ * @return {undefined}
+ */
+chrome.identity.getAccounts = function(callback) {};
+
+
+/**
+ * @param {(!chrome.identity.TokenDetails|function(string=): void)}
  *     detailsOrCallback Token options or a callback function if no options are
  *     specified.
  * @param {function(string=): void=} opt_callback A callback function if options
  *     are specified.
+ * @return {undefined}
  */
 chrome.identity.getAuthToken = function(detailsOrCallback, opt_callback) {};
 
 
-/** @typedef {{interactive: (boolean|undefined)}} */
+/**
+ * @typedef {?{
+ *   interactive: (boolean|undefined),
+ *   account: (!chrome.identity.AccountInfo|undefined),
+ *   scopes: (!Array<string>|undefined)
+ * }}
+ */
 chrome.identity.TokenDetails;
 
 
 /**
- * @param {chrome.identity.InvalidTokenDetails} details
- * @param {function(): void} callback
+ * @param {!chrome.identity.InvalidTokenDetails} details
+ * @param {function(): void=} opt_callback
+ * @return {undefined}
  */
-chrome.identity.removeCachedAuthToken = function(details, callback) {};
+chrome.identity.removeCachedAuthToken = function(details, opt_callback) {};
 
 
-/** @typedef {{token: string}} */
+/** @typedef {?{token: string}} */
 chrome.identity.InvalidTokenDetails;
 
 
 /**
- * @param {chrome.identity.WebAuthFlowDetails} details
+ * @param {!chrome.identity.WebAuthFlowDetails} details
  * @param {function(string=): void} callback
+ * @return {undefined}
  */
 chrome.identity.launchWebAuthFlow = function(details, callback) {};
 
 
-/** @typedef {{url: string, interactive: (boolean|undefined)}} */
+/** @typedef {?{url: string, interactive: (boolean|undefined)}} */
 chrome.identity.WebAuthFlowDetails;
 
 
-/** @param {function(!Object):void} callback */
+/**
+ * @param {function(!Object):void} callback
+ * @return {undefined}
+ */
 chrome.identity.getProfileUserInfo = function(callback) {};
 
 
-/** @type {!ChromeEvent} */
+
+/**
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.identity.AccountInfo, boolean)>}
+ */
+chrome.identity.OnSignInChangedEvent = function() {};
+
+
+/** @type {!chrome.identity.OnSignInChangedEvent} */
 chrome.identity.onSignInChanged;
+
+
+/**
+ * @param {string=} opt_path
+ * @return {string}
+ */
+chrome.identity.getRedirectURL = function(opt_path) {};
 
 
 /**
@@ -4172,7 +4253,11 @@ chrome.input.ime = {};
 
 /**
  * The OnKeyEvent event takes an extra argument.
- * @constructor
+ *
+ * The addListener() method for this class takes more than one argument, so it
+ * isn't possible to just extend ChromeBaseEvent here.
+ * @interface
+ * @extends {ChromeBaseEventNoListeners}
  */
 function ChromeInputImeOnKeyEventEvent() {}
 
@@ -4180,7 +4265,8 @@ function ChromeInputImeOnKeyEventEvent() {}
 /**
  * @param {function(string, !ChromeKeyboardEvent): (boolean|undefined)} callback
  *     callback.
- * @param {Array.<string>=} opt_extraInfoSpec Array of extra information.
+ * @param {Array<string>=} opt_extraInfoSpec Array of extra information.
+ * @return {undefined}
  */
 ChromeInputImeOnKeyEventEvent.prototype.addListener =
     function(callback, opt_extraInfoSpec) {};
@@ -4189,6 +4275,7 @@ ChromeInputImeOnKeyEventEvent.prototype.addListener =
 /**
  * @param {function(string, !ChromeKeyboardEvent): (boolean|undefined)} callback
  *     callback.
+ * @return {undefined}
  */
 ChromeInputImeOnKeyEventEvent.prototype.removeListener = function(callback) {};
 
@@ -4196,6 +4283,7 @@ ChromeInputImeOnKeyEventEvent.prototype.removeListener = function(callback) {};
 /**
  * @param {function(string, !ChromeKeyboardEvent): (boolean|undefined)} callback
  *     callback.
+ * @return {undefined}
  */
 ChromeInputImeOnKeyEventEvent.prototype.hasListener = function(callback) {};
 
@@ -4203,85 +4291,95 @@ ChromeInputImeOnKeyEventEvent.prototype.hasListener = function(callback) {};
 /**
  * @param {function(string, !ChromeKeyboardEvent): (boolean|undefined)} callback
  *     callback.
+ * @return {undefined}
  */
 ChromeInputImeOnKeyEventEvent.prototype.hasListeners = function(callback) {};
 
 
 /**
- * @param {!Object.<string,number>} parameters An object with a
+ * @param {!Object<string,number>} parameters An object with a
  *     'contextID' (number) key.
  * @param {function(boolean): void} callback Callback function.
+ * @return {undefined}
  */
 chrome.input.ime.clearComposition = function(parameters, callback) {};
 
 
 /**
- * @param {!Object.<string,(string|number)>} parameters An object with
+ * @param {!Object<string,(string|number)>} parameters An object with
  *     'contextID' (number) and 'text' (string) keys.
  * @param {function(boolean): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 chrome.input.ime.commitText = function(parameters, opt_callback) {};
 
 
 /**
- * @param {!Object.<string,(string|number)>} parameters An object with
+ * @param {!Object<string,(string|number)>} parameters An object with
  *     'contextID' (number) and 'text' (string) keys.
  * @param {function(boolean): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 chrome.input.ime.deleteSurroundingText = function(parameters, opt_callback) {};
 
 
 /**
- * @param {!Object.<string,(number|Object.<string,(string|number|boolean)>)>}
+ * @param {!Object<string,(number|Object<string,(string|number|boolean)>)>}
  *     parameters An object with 'engineID' (string) and 'properties'
  *     (Object) keys.
  * @param {function(boolean): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 chrome.input.ime.setCandidateWindowProperties =
     function(parameters, opt_callback) {};
 
 
 /**
- * @param {!Object.<string,(number|Object.<string,(string|number)>)>}
+ * @param {!Object<string,(number|Object<string,(string|number)>)>}
  *     parameters An object with 'contextID' (number) and 'candidates'
  *     (array of object) keys.
  * @param {function(boolean): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 chrome.input.ime.setCandidates = function(parameters, opt_callback) {};
 
 
 /**
- * @param {!Object.<string,(string|number|Object.<string,(string|number)>)>}
+ * @param {!Object<string,(string|number|Object<string,(string|number)>)>}
  *     parameters An object with 'contextID' (number), 'text' (string),
  *     'selectionStart (number), 'selectionEnd' (number), 'cursor' (number),
  *     and 'segments' (array of object) keys.
  * @param {function(boolean): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 chrome.input.ime.setComposition = function(parameters, opt_callback) {};
 
 
 /**
- * @param {!Object.<string,number>} parameters An object with
+ * @param {!Object<string,number>} parameters An object with
  *     'contextID' (number) and 'candidateID' (number) keys.
  * @param {function(boolean): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 chrome.input.ime.setCursorPosition = function(parameters, opt_callback) {};
 
 
 /**
- * @param {!Object.<string,(string|Array.<Object.<string,(string|boolean)>>)>}
+ * @param {!Object<string,(string|Array<Object<string,(string|boolean)>>)>}
  *     parameters An object with 'engineID' (string) and 'items'
  *     (array of object) keys.
  * @param {function(): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 chrome.input.ime.setMenuItems = function(parameters, opt_callback) {};
 
 
 /**
- * @param {!Object.<string,(string|Array.<Object.<string,(string|boolean)>>)>}
+ * @param {!Object<string,(string|Array<Object<string,(string|boolean)>>)>}
  *     parameters An object with  'engineID' (string) and 'items'
  *     (array of object) keys.
  * @param {function(): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 chrome.input.ime.updateMenuItems = function(parameters, opt_callback) {};
 
@@ -4290,6 +4388,7 @@ chrome.input.ime.updateMenuItems = function(parameters, opt_callback) {};
  * @param {string} requestId Request id of the event that was handled. This
  *     should come from keyEvent.requestId.
  * @param {boolean} response True if the keystroke was handled, false if not.
+ * @return {undefined}
  */
 chrome.input.ime.keyEventHandled = function(requestId, response) {};
 
@@ -4343,18 +4442,20 @@ chrome.mediaGalleries = {};
 
 
 /**
- * @param {{interactive: (string|undefined)}|function(!Array.<!FileSystem>)}
+ * @param {{interactive: (string|undefined)}|function(!Array<!FileSystem>)}
  *     detailsOrCallback A details object for whether the request should be
  *     interactive if permissions haven't been granted yet or the callback.
- * @param {function(!Array.<!FileSystem>)=} opt_callback A success callback if
+ * @param {function(!Array<!FileSystem>)=} opt_callback A success callback if
  *     no details were supplied as arg1.
+ * @return {undefined}
  */
 chrome.mediaGalleries.getMediaFileSystems = function(
     detailsOrCallback, opt_callback) {};
 
 
 /**
- * @param {function(!Array.<!FileSystem>, string)} callback Callback function.
+ * @param {function(!Array<!FileSystem>, string)} callback Callback function.
+ * @return {undefined}
  */
 chrome.mediaGalleries.addUserSelectedFolder = function(callback) {};
 
@@ -4362,6 +4463,7 @@ chrome.mediaGalleries.addUserSelectedFolder = function(callback) {};
 /**
  * @param {string} galleryId ID of the media gallery.
  * @param {function()=} opt_callback Optional callback function.
+ * @return {undefined}
  */
 chrome.mediaGalleries.dropPermissionForMediaFileSystem =
     function(galleryId, opt_callback) {};
@@ -4374,7 +4476,8 @@ chrome.mediaGalleries.cancelMediaScan = function() {};
 
 
 /**
- * @param {function(!Array.<!FileSystem>)} callback Callback function.
+ * @param {function(!Array<!FileSystem>)} callback Callback function.
+ * @return {undefined}
  */
 chrome.mediaGalleries.addScanResults = function(callback) {};
 
@@ -4400,8 +4503,9 @@ chrome.mediaGalleries.getMediaFileSystemMetadata = function(mediaFileSystem) {};
 
 
 /**
- * @param {function(!Array.<!chrome.mediaGalleries.MediaFileSystemMetadata>)}
+ * @param {function(!Array<!chrome.mediaGalleries.MediaFileSystemMetadata>)}
  *     callback Callback function.
+ * @return {undefined}
  */
 chrome.mediaGalleries.getAllMediaFileSystemMetadata = function(callback) {};
 
@@ -4431,8 +4535,8 @@ chrome.mediaGalleries.getAllMediaFileSystemMetadata = function(callback) {};
  *   language: (string|undefined),
  *   title: (string|undefined),
  *   track: (number|undefined),
- *   rawTags: !Array.<!chrome.mediaGalleries.metadata.RawTag>,
- *   attachedImages: !Array.<!Blob>
+ *   rawTags: !Array<!chrome.mediaGalleries.metadata.RawTag>,
+ *   attachedImages: !Array<!Blob>
  * }}
  */
 chrome.mediaGalleries.MetaData;
@@ -4450,7 +4554,7 @@ chrome.mediaGalleries.metadata.RawTag = function() {};
 chrome.mediaGalleries.metadata.RawTag.prototype.type;
 
 
-/** @type {!Object.<string, string>} */
+/** @type {!Object<string, string>} */
 chrome.mediaGalleries.metadata.RawTag.prototype.tags;
 
 
@@ -4463,6 +4567,7 @@ chrome.mediaGalleries.metadata.RawTag.prototype.tags;
  *     'all' if the metadataType is omitted.
  * @param {function(!chrome.mediaGalleries.MetaData)=} opt_callback If options
  *     were passed as arg2, the callback to invoke with the metadata.
+ * @return {undefined}
  */
 chrome.mediaGalleries.getMetadata = function(
     mediaFile, optionsOrCallback, opt_callback) {};
@@ -4478,19 +4583,22 @@ chrome.mediaGalleries.AddGalleryWatchCallback;
  * @param {string} galleryId The media gallery's ID.
  * @param {!chrome.mediaGalleries.AddGalleryWatchCallback} callback Fired with
  *     success or failure result.
+ * @return {undefined}
  */
 chrome.mediaGalleries.addGalleryWatch = function(galleryId, callback) {};
 
 
 /**
  * @param {string} galleryId The media gallery's ID.
+ * @return {undefined}
  */
 chrome.mediaGalleries.removeGalleryWatch = function(galleryId) {};
 
 
 /**
- * @param {function(!Array.<string>): void} callback Callback function notifies
+ * @param {function(!Array<string>): void} callback Callback function notifies
  *     which galleries are being watched.
+ * @return {undefined}
  */
 chrome.mediaGalleries.getAllGalleryWatch = function(callback) {};
 
@@ -4500,7 +4608,8 @@ chrome.mediaGalleries.removeAllGalleryWatch = function() {};
 
 
 /**
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<!chrome.mediaGalleries.GalleryChangeCallback>}
  */
 chrome.mediaGalleries.GalleryChangeEvent = function() {};
 
@@ -4509,33 +4618,6 @@ chrome.mediaGalleries.GalleryChangeEvent = function() {};
  * @typedef {function({type: string, galleryId: string}): void}
  */
 chrome.mediaGalleries.GalleryChangeCallback;
-
-
-/**
- * @param {!chrome.mediaGalleries.GalleryChangeCallback} callback
- */
-chrome.mediaGalleries.GalleryChangeEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {!chrome.mediaGalleries.GalleryChangeCallback} callback
- */
-chrome.mediaGalleries.GalleryChangeEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {!chrome.mediaGalleries.GalleryChangeCallback} callback
- */
-chrome.mediaGalleries.GalleryChangeEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-chrome.mediaGalleries.GalleryChangeEvent.prototype.hasListeners = function() {};
 
 
 /**
@@ -4560,31 +4642,10 @@ chrome.mediaGalleries.OnScanProgressDetails;
 /**
  * Event whose listeners take a chrome.mediaGalleries.OnScanProgressDetails
  * parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.mediaGalleries.OnScanProgressDetails)>}
  */
 chrome.mediaGalleries.ScanProgressEvent = function() {};
-
-
-/** @param {function(!chrome.mediaGalleries.OnScanProgressDetails)} callback */
-chrome.mediaGalleries.ScanProgressEvent.prototype.addListener =
-    function(callback) {};
-
-
-/** @param {function(!chrome.mediaGalleries.OnScanProgressDetails)} callback */
-chrome.mediaGalleries.ScanProgressEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.mediaGalleries.OnScanProgressDetails)} callback
- * @return {boolean}
- */
-chrome.mediaGalleries.ScanProgressEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.mediaGalleries.ScanProgressEvent.prototype.hasListeners = function() {};
 
 
 /** @type {!chrome.mediaGalleries.ScanProgressEvent} */
@@ -4599,8 +4660,9 @@ chrome.pageCapture = {};
 
 
 /**
- * @param {Object.<string, number>} details Object with a 'tabId' (number) key.
+ * @param {Object<string, number>} details Object with a 'tabId' (number) key.
  * @param {function(Blob=): void} callback Callback function.
+ * @return {undefined}
  */
 chrome.pageCapture.saveAsMHTML = function(details, callback) {};
 
@@ -4614,8 +4676,8 @@ chrome.permissions = {};
 
 /**
  * @typedef {{
- *   permissions: (Array.<string>|undefined),
- *   origins: (Array.<string>|undefined)
+ *   permissions: (Array<string>|undefined),
+ *   origins: (Array<string>|undefined)
  * }}
  * @see http://developer.chrome.com/extensions/permissions.html#type-Permissions
  */
@@ -4625,6 +4687,7 @@ chrome.permissions.Permissions;
 /**
  * @param {!chrome.permissions.Permissions} permissions
  * @param {function(boolean): void} callback Callback function.
+ * @return {undefined}
  */
 chrome.permissions.contains = function(permissions, callback) {};
 
@@ -4632,6 +4695,7 @@ chrome.permissions.contains = function(permissions, callback) {};
 /**
  * @param {function(!chrome.permissions.Permissions): void} callback
  *     Callback function.
+ * @return {undefined}
  */
 chrome.permissions.getAll = function(callback) {};
 
@@ -4639,6 +4703,7 @@ chrome.permissions.getAll = function(callback) {};
 /**
  * @param {!chrome.permissions.Permissions} permissions
  * @param {function(boolean): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 chrome.permissions.remove = function(permissions, opt_callback) {};
 
@@ -4646,6 +4711,7 @@ chrome.permissions.remove = function(permissions, opt_callback) {};
 /**
  * @param {!chrome.permissions.Permissions} permissions
  * @param {function(boolean): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 chrome.permissions.request = function(permissions, opt_callback) {};
 
@@ -4667,12 +4733,14 @@ chrome.power = {};
 /**
  * @param {string} level A string describing the degree to which power
  *     management should be disabled, should be either "system" or "display".
+ * @return {undefined}
  */
 chrome.power.requestKeepAwake = function(level) {};
 
 
 /**
  * Releases a request previously made via requestKeepAwake().
+ * @return {undefined}
  */
 chrome.power.releaseKeepAwake = function() {};
 
@@ -4684,15 +4752,15 @@ chrome.power.releaseKeepAwake = function() {};
 chrome.privacy = {};
 
 
-/** @type {!Object.<string,!ChromeSetting>} */
+/** @type {!Object<string,!ChromeSetting>} */
 chrome.privacy.network;
 
 
-/** @type {!Object.<string,!ChromeSetting>} */
+/** @type {!Object<string,!ChromeSetting>} */
 chrome.privacy.services;
 
 
-/** @type {!Object.<string,!ChromeSetting>} */
+/** @type {!Object<string,!ChromeSetting>} */
 chrome.privacy.websites;
 
 
@@ -4703,7 +4771,7 @@ chrome.privacy.websites;
 chrome.proxy = {};
 
 
-/** @type {!Object.<string,!ChromeSetting>} */
+/** @type {!Object<string,!ChromeSetting>} */
 chrome.proxy.settings;
 
 
@@ -4845,12 +4913,14 @@ chrome.socket.NetworkAdapterInfo.prototype.address;
  *     socket options or callback.
  * @param {function(!chrome.socket.CreateInfo)=} opt_callback Called when the
  *     socket has been created.
+ * @return {undefined}
  */
 chrome.socket.create = function(type, optionsOrCallback, opt_callback) {};
 
 
 /**
  * @param {number} socketId The id of the socket to destroy.
+ * @return {undefined}
  */
 chrome.socket.destroy = function(socketId) {};
 
@@ -4861,6 +4931,7 @@ chrome.socket.destroy = function(socketId) {};
  * @param {number} port The port of the remote machine.
  * @param {function(number)} callback Called when the connection attempt is
  *     complete.
+ * @return {undefined}
  */
 chrome.socket.connect = function(socketId, hostname, port, callback) {};
 
@@ -4870,12 +4941,14 @@ chrome.socket.connect = function(socketId, hostname, port, callback) {};
  * @param {string} address The address of the local machine.
  * @param {number} port The port of the local machine.
  * @param {function(number)} callback Called when the bind attempt is complete.
+ * @return {undefined}
  */
 chrome.socket.bind = function(socketId, address, port, callback) {};
 
 
 /**
  * @param {number} socketId The id of the socket to disconnect.
+ * @return {undefined}
  */
 chrome.socket.disconnect = function(socketId) {};
 
@@ -4886,6 +4959,7 @@ chrome.socket.disconnect = function(socketId) {};
  *     read buffer size or the callback.
  * @param {function(!chrome.socket.ReadInfo)=} opt_callback Called with data
  *     that was available to be read without blocking.
+ * @return {undefined}
  */
 chrome.socket.read = function(socketId, bufferSizeOrCallback, opt_callback) {};
 
@@ -4895,6 +4969,7 @@ chrome.socket.read = function(socketId, bufferSizeOrCallback, opt_callback) {};
  * @param {!ArrayBuffer} data The data to write.
  * @param {function(!chrome.socket.WriteInfo)} callback Called when the write
  *     operation completes without blocking or an error occurs.
+ * @return {undefined}
  */
 chrome.socket.write = function(socketId, data, callback) {};
 
@@ -4905,6 +4980,7 @@ chrome.socket.write = function(socketId, data, callback) {};
  *     The read buffer size or the callback.
  * @param {function(!chrome.socket.RecvFromInfo)=} opt_callback Called with data
  *     that was available to be read without blocking.
+ * @return {undefined}
  */
 chrome.socket.recvFrom = function(socketId, bufferSizeOrCallback,
     opt_callback) {};
@@ -4917,6 +4993,7 @@ chrome.socket.recvFrom = function(socketId, bufferSizeOrCallback,
  * @param {number} port The port of the remote machine.
  * @param {function(!chrome.socket.WriteInfo)} callback Called when the write
  *     operation completes without blocking or an error occurs.
+ * @return {undefined}
  */
 chrome.socket.sendTo = function(socketId, data, address, port, callback) {};
 
@@ -4930,6 +5007,7 @@ chrome.socket.sendTo = function(socketId, data, address, port, callback) {};
  *     socket's listen queue or the callback.
  * @param {function(number)=} opt_callback Called when the listen operation
  *     completes.
+ * @return {undefined}
  */
 chrome.socket.listen =
     function(socketId, address, port, backlogOrCallback, opt_callback) {};
@@ -4939,6 +5017,7 @@ chrome.socket.listen =
  * @param {number} socketId The id of the socket to accept a connection on.
  * @param {function(!chrome.socket.AcceptInfo)} callback Called when a new
  *     socket is accepted.
+ * @return {undefined}
  */
 chrome.socket.accept = function(socketId, callback) {};
 
@@ -4951,6 +5030,7 @@ chrome.socket.accept = function(socketId, callback) {};
  *     is 0) or the callback
  * @param {function(boolean)=} opt_callback Called when the setKeepAlive attempt
  *     is complete.
+ * @return {undefined}
  */
 chrome.socket.setKeepAlive = function(socketId, enable, delayOrCallback,
     opt_callback) {};
@@ -4961,6 +5041,7 @@ chrome.socket.setKeepAlive = function(socketId, enable, delayOrCallback,
  * @param {boolean} noDelay If true, disables Nagle's algorithm.
  * @param {function(boolean)} callback Called when the setNoDelay attempt is
  *     complete.
+ * @return {undefined}
  */
 chrome.socket.setNoDelay = function(socketId, noDelay, callback) {};
 
@@ -4969,13 +5050,15 @@ chrome.socket.setNoDelay = function(socketId, noDelay, callback) {};
  * @param {number} socketId The id of the socket.
  * @param {function(!chrome.socket.SocketInfo)} callback Called when the state
  *     is available.
+ * @return {undefined}
  */
 chrome.socket.getInfo = function(socketId, callback) {};
 
 
 /**
- * @param {function(!Array.<!chrome.socket.NetworkAdapterInfo>)} callback Called
+ * @param {function(!Array<!chrome.socket.NetworkAdapterInfo>)} callback Called
  *     when local adapter information is available.
+ * @return {undefined}
  */
 chrome.socket.getNetworkList = function(callback) {};
 
@@ -4985,6 +5068,7 @@ chrome.socket.getNetworkList = function(callback) {};
  * @param {string} address The group address to join. Domain names are not
  *     supported.
  * @param {function(number)} callback Called when the join operation is done.
+ * @return {undefined}
  */
 chrome.socket.joinGroup = function(socketId, address, callback) {};
 
@@ -4994,6 +5078,7 @@ chrome.socket.joinGroup = function(socketId, address, callback) {};
  * @param {string} address The group address to leave. Domain names are not
  *     supported.
  * @param {function(number)} callback Called when the leave operation is done.
+ * @return {undefined}
  */
 chrome.socket.leaveGroup = function(socketId, address, callback) {};
 
@@ -5003,6 +5088,7 @@ chrome.socket.leaveGroup = function(socketId, address, callback) {};
  * @param {number} ttl The time-to-live value.
  * @param {function(number)} callback Called when the configuration operation is
  *     done.
+ * @return {undefined}
  */
 chrome.socket.setMulticastTimeToLive = function(socketId, ttl, callback) {};
 
@@ -5012,6 +5098,7 @@ chrome.socket.setMulticastTimeToLive = function(socketId, ttl, callback) {};
  * @param {boolean} enabled True to enable loopback mode.
  * @param {function(number)} callback Called when the configuration operation is
  *     done.
+ * @return {undefined}
  */
 chrome.socket.setMulticastLoopbackMode = function(socketId, enabled,
     callback) {};
@@ -5019,8 +5106,9 @@ chrome.socket.setMulticastLoopbackMode = function(socketId, enabled,
 
 /**
  * @param {number} socketId The id of the socket.
- * @param {function(!Array.<string>)} callback Called with an array of string
+ * @param {function(!Array<string>)} callback Called with an array of string
  *     groups.
+ * @return {undefined}
  */
 chrome.socket.getJoinedGroups = function(socketId, callback) {};
 
@@ -5121,6 +5209,7 @@ chrome.sockets.tcp.SecureProperties;
  *     function(!Object)} propertiesOrCallback
  * @param {function(!Object)=} opt_callback
  * @see https://developer.chrome.com/apps/sockets_tcp#method-create
+ * @return {undefined}
  */
 chrome.sockets.tcp.create = function(propertiesOrCallback, opt_callback) {};
 
@@ -5130,6 +5219,7 @@ chrome.sockets.tcp.create = function(propertiesOrCallback, opt_callback) {};
  * @param {!chrome.sockets.tcp.SocketProperties} properties
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/apps/sockets_tcp#method-update
+ * @return {undefined}
  */
 chrome.sockets.tcp.update = function(socketId, properties, opt_callback) {};
 
@@ -5139,6 +5229,7 @@ chrome.sockets.tcp.update = function(socketId, properties, opt_callback) {};
  * @param {boolean} paused
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/apps/sockets_tcp#method-setPaused
+ * @return {undefined}
  */
 chrome.sockets.tcp.setPaused = function(socketId, paused, opt_callback) {};
 
@@ -5149,6 +5240,7 @@ chrome.sockets.tcp.setPaused = function(socketId, paused, opt_callback) {};
  * @param {(number|function(number))} delayOrCallback
  * @param {function(number)=} opt_callback
  * @see https://developer.chrome.com/apps/sockets_tcp#method-setKeepAlive
+ * @return {undefined}
  */
 chrome.sockets.tcp.setKeepAlive = function(socketId, enable, delayOrCallback,
     opt_callback) {};
@@ -5159,6 +5251,7 @@ chrome.sockets.tcp.setKeepAlive = function(socketId, enable, delayOrCallback,
  * @param {boolean} noDelay
  * @param {function(number)} callback
  * @see https://developer.chrome.com/apps/sockets_tcp#method-setNoDelay
+ * @return {undefined}
  */
 chrome.sockets.tcp.setNoDelay = function(socketId, noDelay, callback) {};
 
@@ -5169,6 +5262,7 @@ chrome.sockets.tcp.setNoDelay = function(socketId, noDelay, callback) {};
  * @param {number} peerPort
  * @param {function(number)} callback
  * @see https://developer.chrome.com/apps/sockets_tcp#method-connect
+ * @return {undefined}
  */
 chrome.sockets.tcp.connect = function(socketId, peerAddress, peerPort,
     callback) {};
@@ -5178,6 +5272,7 @@ chrome.sockets.tcp.connect = function(socketId, peerAddress, peerPort,
  * @param {number} socketId The id of the socket to disconnect.
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/apps/sockets_tcp#method-disconnect
+ * @return {undefined}
  */
 chrome.sockets.tcp.disconnect = function(socketId, opt_callback) {};
 
@@ -5188,6 +5283,7 @@ chrome.sockets.tcp.disconnect = function(socketId, opt_callback) {};
  *     optionsOrCallback
  * @param {function(number)=} opt_callback
  * @see https://developer.chrome.com/apps/sockets_tcp#method-secure
+ * @return {undefined}
  */
 chrome.sockets.tcp.secure = function(socketId, optionsOrCallback,
     opt_callback) {};
@@ -5198,6 +5294,7 @@ chrome.sockets.tcp.secure = function(socketId, optionsOrCallback,
  * @param {!ArrayBuffer} data
  * @param {function(!Object)} callback
  * @see https://developer.chrome.com/apps/sockets_tcp#method-send
+ * @return {undefined}
  */
 chrome.sockets.tcp.send = function(socketId, data, callback) {};
 
@@ -5206,6 +5303,7 @@ chrome.sockets.tcp.send = function(socketId, data, callback) {};
  * @param {number} socketId
  * @param {function()=} opt_callback
  * @see https://developer.chrome.com/apps/sockets_tcp#method-close
+ * @return {undefined}
  */
 chrome.sockets.tcp.close = function(socketId, opt_callback) {};
 
@@ -5214,13 +5312,15 @@ chrome.sockets.tcp.close = function(socketId, opt_callback) {};
  * @param {number} socketId
  * @param {function(!chrome.sockets.tcp.SocketInfo)} callback
  * @see https://developer.chrome.com/apps/sockets_tcp#method-getInfo
+ * @return {undefined}
  */
 chrome.sockets.tcp.getInfo = function(socketId, callback) {};
 
 
 /**
- * @param {function(!Array.<!chrome.sockets.tcp.SocketInfo>)} callback
+ * @param {function(!Array<!chrome.sockets.tcp.SocketInfo>)} callback
  * @see https://developer.chrome.com/apps/sockets_tcp#method-getSockets
+ * @return {undefined}
  */
 chrome.sockets.tcp.getSockets = function(callback) {};
 
@@ -5244,35 +5344,10 @@ chrome.sockets.tcp.ReceiveEventData.prototype.data;
 
 /**
  * Event whose listeners take a ReceiveEventData parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.sockets.tcp.ReceiveEventData)>}
  */
 chrome.sockets.tcp.ReceiveEvent = function() {};
-
-
-/**
- * @param {function(!chrome.sockets.tcp.ReceiveEventData): void} callback
- */
-chrome.sockets.tcp.ReceiveEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.sockets.tcp.ReceiveEventData): void} callback
- */
-chrome.sockets.tcp.ReceiveEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.sockets.tcp.ReceiveEventData): void} callback
- * @return {boolean}
- */
-chrome.sockets.tcp.ReceiveEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.sockets.tcp.ReceiveEvent.prototype.hasListeners = function() {};
 
 
 /** @type {!chrome.sockets.tcp.ReceiveEvent} */
@@ -5298,43 +5373,222 @@ chrome.sockets.tcp.ReceiveErrorEventData.prototype.resultCode;
 
 /**
  * Event whose listeners take a ReceiveErrorEventData parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.sockets.tcp.ReceiveErrorEventData)>}
  */
 chrome.sockets.tcp.ReceiveErrorEvent = function() {};
 
 
-/**
- * @param {function(
- *     !chrome.sockets.tcp.ReceiveErrorEventData): void} callback
- */
-chrome.sockets.tcp.ReceiveErrorEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {function(
- *     !chrome.sockets.tcp.ReceiveErrorEventData): void} callback
- */
-chrome.sockets.tcp.ReceiveErrorEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(
- *     !chrome.sockets.tcp.ReceiveErrorEventData): void} callback
- * @return {boolean}
- */
-chrome.sockets.tcp.ReceiveErrorEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.sockets.tcp.ReceiveErrorEvent.prototype.hasListeners =
-    function() {};
-
-
 /** @type {!chrome.sockets.tcp.ReceiveErrorEvent} */
 chrome.sockets.tcp.onReceiveError;
+
+
+/**
+ * @see https://developer.chrome.com/apps/sockets_udp
+ * @const
+ */
+chrome.sockets.udp = {};
+
+
+/**
+ * @typedef {?{
+ *   persistent: (boolean|undefined),
+ *   name: (string|undefined),
+ *   bufferSize: (number|undefined)
+ * }}
+ * @see https://developer.chrome.com/apps/sockets_udp#type-SocketProperties
+ */
+chrome.sockets.udp.SocketProperties;
+
+
+/**
+ * @constructor
+ * @see https://developer.chrome.com/apps/sockets_udp#type-SocketInfo
+ */
+chrome.sockets.udp.SocketInfo = function() {};
+
+
+/** @type {number} */
+chrome.sockets.udp.SocketInfo.prototype.socketId;
+
+
+/** @type {boolean} */
+chrome.sockets.udp.SocketInfo.prototype.persistent;
+
+
+/** @type {string|undefined} */
+chrome.sockets.udp.SocketInfo.prototype.name;
+
+
+/** @type {number|undefined} */
+chrome.sockets.udp.SocketInfo.prototype.bufferSize;
+
+
+/** @type {boolean} */
+chrome.sockets.udp.SocketInfo.prototype.paused;
+
+
+/** @type {string|undefined} */
+chrome.sockets.udp.SocketInfo.prototype.localAddress;
+
+
+/** @type {number|undefined} */
+chrome.sockets.udp.SocketInfo.prototype.localPort;
+
+
+/**
+ * @param {
+ *   (!chrome.sockets.udp.SocketProperties|function(!Object))
+ * } propertiesOrCallback
+ * @param {function(!Object)=} opt_callback
+ * @return {undefined}
+ * @see https://developer.chrome.com/apps/sockets_udp#method-create
+ */
+chrome.sockets.udp.create = function(propertiesOrCallback, opt_callback) {};
+
+
+/**
+ * @param {number} socketId
+ * @param {!chrome.sockets.udp.SocketProperties} properties
+ * @param {function(): void=} opt_callback
+ * @return {undefined}
+ * @see https://developer.chrome.com/apps/sockets_udp#method-update
+ */
+chrome.sockets.udp.update = function(socketId, properties, opt_callback) {};
+
+
+/**
+ * @param {number} socketId
+ * @param {boolean} paused
+ * @param {function(): void=} opt_callback
+ * @return {undefined}
+ * @see https://developer.chrome.com/apps/sockets_udp#method-setPaused
+ */
+chrome.sockets.udp.setPaused = function(socketId, paused, opt_callback) {};
+
+
+/**
+ * @param {number} socketId
+ * @param {string} address
+ * @param {number} port
+ * @param {function(number): void} callback
+ * @return {undefined}
+ * @see https://developer.chrome.com/apps/sockets_udp#method-bind
+ */
+chrome.sockets.udp.bind = function(socketId, address, port, callback) {};
+
+
+/**
+ * @param {number} socketId
+ * @param {!ArrayBuffer} data
+ * @param {string} address
+ * @param {number} port
+ * @param {function(!Object): void} callback
+ * @return {undefined}
+ * @see https://developer.chrome.com/apps/sockets_udp#method-send
+ */
+chrome.sockets.udp.send = function(socketId, data, address, port, callback) {};
+
+
+/**
+ * @param {number} socketId
+ * @param {function()} callback
+ * @return {undefined}
+ * @see https://developer.chrome.com/apps/sockets_udp#method-close
+ */
+chrome.sockets.udp.close = function(socketId, callback) {};
+
+
+/**
+ * @param {number} socketId
+ * @param {function(!chrome.sockets.udp.SocketInfo): void} callback
+ * @return {undefined}
+ * @see https://developer.chrome.com/apps/sockets_udp#method-getInfo
+ */
+chrome.sockets.udp.getInfo = function(socketId, callback) {};
+
+
+/**
+ * @param {function(!Array<!chrome.sockets.udp.SocketInfo>): void} callback
+ * @return {undefined}
+ * @see https://developer.chrome.com/apps/sockets_udp#method-getSockets
+ */
+chrome.sockets.udp.getSockets = function(callback) {};
+
+
+/**
+ * @param {number} socketId
+ * @param {string} address
+ * @param {function(number): void} callback
+ * @return {undefined}
+ * @see https://developer.chrome.com/apps/sockets_udp#method-joinGroup
+ */
+chrome.sockets.udp.joinGroup = function(socketId, address, callback) {};
+
+
+/**
+ * @param {number} socketId
+ * @param {string} address
+ * @param {function(number): void} callback
+ * @return {undefined}
+ * @see https://developer.chrome.com/apps/sockets_udp#method-leaveGroup
+ */
+chrome.sockets.udp.leaveGroup = function(socketId, address, callback) {};
+
+
+/**
+ * @param {number} socketId
+ * @param {number} ttl
+ * @param {function(number): void} callback
+ * @return {undefined}
+ * @see https://developer.chrome.com/apps/sockets_udp#method-setMulticastTimeToLive
+ */
+chrome.sockets.udp.setMulticastTimeToLive =
+    function(socketId, ttl, callback) {};
+
+
+/**
+ * @param {number} socketId
+ * @param {boolean} enabled
+ * @param {function(number): void} callback
+ * @return {undefined}
+ * @see https://developer.chrome.com/apps/sockets_udp#method-setMulticastLoopbackMode
+ */
+chrome.sockets.udp.setMulticastLoopbackMode =
+    function(socketId, enabled, callback) {};
+
+
+/**
+ * @param {number} socketId
+ * @param {function(!Array<string>): void} callback
+ * @return {undefined}
+ * @see https://developer.chrome.com/apps/sockets_udp#method-getJoinedGroups
+ */
+chrome.sockets.udp.getJoinedGroups = function(socketId, callback) {};
+
+
+/**
+ * @param {number} socketId
+ * @param {boolean} enabled
+ * @param {function(number): void} callback
+ * @return {undefined}
+ * @see https://developer.chrome.com/apps/sockets_udp#method-send
+ */
+chrome.sockets.udp.setBroadcast = function(socketId, enabled, callback) {};
+
+
+/**
+ * @type {!ChromeObjectEvent}
+ * @see https://developer.chrome.com/apps/sockets_udp#event-onReceive
+ */
+chrome.sockets.udp.onReceive;
+
+
+/**
+ * @type {!ChromeObjectEvent}
+ * @see https://developer.chrome.com/apps/sockets_udp#event-onReceiveError
+ */
+chrome.sockets.udp.onReceiveError;
 
 
 /**
@@ -5350,6 +5604,10 @@ chrome.storage.sync;
 
 /** @type {!StorageArea} */
 chrome.storage.local;
+
+
+/** @type {!StorageArea} */
+chrome.storage.managed;
 
 
 /** @type {!StorageChangeEvent} */
@@ -5369,6 +5627,7 @@ chrome.system.cpu = {};
 
 /**
  * @param {function(!Object)} callback
+ * @return {undefined}
  */
 chrome.system.cpu.getInfo = function(callback) {};
 
@@ -5380,110 +5639,253 @@ chrome.system.cpu.getInfo = function(callback) {};
 chrome.system.display = {};
 
 
-/** @type {!ChromeEvent} */
-chrome.system.display.onDisplayChanged;
-
-
-
 /**
- * @constructor
- */
-chrome.system.display.Bounds = function() {};
-
-
-/** @type {number} */
-chrome.system.display.Bounds.prototype.left;
-
-
-/** @type {number} */
-chrome.system.display.Bounds.prototype.top;
-
-
-/** @type {number} */
-chrome.system.display.Bounds.prototype.width;
-
-
-/** @type {number} */
-chrome.system.display.Bounds.prototype.height;
-
-
-/**
- * @typedef {{
- *   left: (number|undefined),
- *   top: (number|undefined),
- *   right: (number|undefined),
- *   bottom: (number|undefined)
+ * @typedef {!{
+ *   left: number,
+ *   top: number,
+ *   width: number,
+ *   height: number
  * }}
+ * @see https://developer.chrome.com/extensions/system.display#type-Bounds
+ */
+chrome.system.display.Bounds;
+
+
+/**
+ * @typedef {!{
+ *   left: number,
+ *   top: number,
+ *   right: number,
+ *   bottom: number
+ * }}
+ * @see https://developer.chrome.com/extensions/system.display#type-Insets
  */
 chrome.system.display.Insets;
 
 
+/**
+ * @typedef {!{
+ *   x: number,
+ *   y: number
+ * }}
+ * @see https://developer.chrome.com/extensions/system.display#type-Point
+ */
+chrome.system.display.Point;
+
 
 /**
+ * @typedef {!{
+ *   width: number,
+ *   height: number,
+ *   widthInNativePixels: number,
+ *   heightInNativePixels: number,
+ *   uiScale: number,
+ *   deviceScaleFactor: number,
+ *   isNative: boolean,
+ *   isSelected: boolean
+ * }}
+ * @see https://developer.chrome.com/extensions/system.display#type-DisplayMode
+ */
+chrome.system.display.DisplayMode;
+
+
+/**
+ * @typedef {!{
+ *   id: string,
+ *   parentId: string,
+ *   position: string,
+ *   offset: number
+ * }}
+ * @see https://developer.chrome.com/extensions/system.display#type-DisplayLayout
+ */
+chrome.system.display.DisplayLayout;
+
+
+
+/**
+ * An undocumented type that defines the objects passed to getInfo()'s callback.
  * @constructor
  */
-chrome.system.display.DisplayInfo = function() {};
+chrome.system.display.DisplayUnitInfo = function() {};
 
 
 /** @type {string} */
-chrome.system.display.DisplayInfo.prototype.id;
+chrome.system.display.DisplayUnitInfo.prototype.id;
 
 
 /** @type {string} */
-chrome.system.display.DisplayInfo.prototype.name;
+chrome.system.display.DisplayUnitInfo.prototype.name;
 
 
 /** @type {string} */
-chrome.system.display.DisplayInfo.prototype.mirroringSourceId;
+chrome.system.display.DisplayUnitInfo.prototype.mirroringSourceId;
 
 
 /** @type {boolean} */
-chrome.system.display.DisplayInfo.prototype.isPrimary;
+chrome.system.display.DisplayUnitInfo.prototype.isPrimary;
 
 
 /** @type {boolean} */
-chrome.system.display.DisplayInfo.prototype.isInternal;
+chrome.system.display.DisplayUnitInfo.prototype.isInternal;
 
 
 /** @type {boolean} */
-chrome.system.display.DisplayInfo.prototype.isEnabled;
+chrome.system.display.DisplayUnitInfo.prototype.isEnabled;
 
 
 /** @type {number} */
-chrome.system.display.DisplayInfo.prototype.dpiX;
+chrome.system.display.DisplayUnitInfo.prototype.dpiX;
 
 
 /** @type {number} */
-chrome.system.display.DisplayInfo.prototype.dpiY;
+chrome.system.display.DisplayUnitInfo.prototype.dpiY;
 
 
 /** @type {number} */
-chrome.system.display.DisplayInfo.prototype.rotation;
+chrome.system.display.DisplayUnitInfo.prototype.rotation;
 
 
 /** @type {!chrome.system.display.Bounds} */
-chrome.system.display.DisplayInfo.prototype.bounds;
+chrome.system.display.DisplayUnitInfo.prototype.bounds;
 
 
 /** @type {!chrome.system.display.Insets} */
-chrome.system.display.DisplayInfo.prototype.overscan;
+chrome.system.display.DisplayUnitInfo.prototype.overscan;
 
 
 /** @type {!chrome.system.display.Bounds} */
-chrome.system.display.DisplayInfo.prototype.workArea;
+chrome.system.display.DisplayUnitInfo.prototype.workArea;
+
+
+/** @type {!Array<!chrome.system.display.DisplayMode>} */
+chrome.system.display.DisplayUnitInfo.prototype.modes;
+
+
+/** @type {boolean} */
+chrome.system.display.DisplayUnitInfo.prototype.hasTouchSupport;
 
 
 /**
- * @typedef {{
- *   mirroringSourceId: (string|undefined),
- *   isPrimary: (boolean|undefined),
- *   overscan: (!chrome.system.display.Insets|undefined),
- *   rotation: (number|undefined),
- *   boundsOriginX: (number|undefined),
- *   boundsOriginY: (number|undefined)
- * }}
+ * @param {function(!Array<!Object>):void} callback Callbacks must declare their
+ *     param to be an array of objects since there is no defined type. To
+ *     achieve stronger type checking, cast the objects to
+ *     chrome.system.display.DisplayUnitInfo. Called with an array of objects
+ *     representing display info.
+ * @return {undefined}
+ * @see https://developer.chrome.com/extensions/system.display#method-getInfo
  */
-chrome.system.display.SettableDisplayInfo;
+chrome.system.display.getInfo = function(callback) {};
+
+
+/**
+ * @param {function(!Array<!chrome.system.display.DisplayLayout>):void} callback
+ *     The callback to invoke with the results.
+ * @see https://developer.chrome.com/extensions/system.display#method-getDisplayLayout
+ */
+chrome.system.display.getDisplayLayout = function(callback) {};
+
+
+/**
+ * @param {string} id The display's unique identifier.
+ * @param {!Object} info The information about display properties that should be
+ *     changed. A property will be changed only if a new value for it is
+ *     specified in info.
+ * @param {function():void=} callback Empty function called when the function
+ *     finishes. To find out whether the function succeeded, runtime.lastError
+ *     should be queried.
+ * @see https://developer.chrome.com/extensions/system.display#method-setDisplayProperties
+ */
+chrome.system.display.setDisplayProperties = function(id, info, callback) {};
+
+
+/**
+ * @param {!Array<!chrome.system.display.DisplayLayout>} layouts The layout
+ *     information, required for all displays except the primary display.
+ * @param {function():void=} callback Empty function called when the function
+ *     finishes. To find out whether the function succeeded, runtime.lastError
+ *     should be queried.
+ * @see https://developer.chrome.com/extensions/system.display#method-setDisplayLayout
+ */
+chrome.system.display.setDisplayLayout = function(layouts, callback) {};
+
+
+/**
+ * @param {boolean} enabled True if unified desktop should be enabled.
+ * @see https://developer.chrome.com/extensions/system.display#method-enableUnifiedDesktop
+ */
+chrome.system.display.enableUnifiedDesktop = function(enabled) {};
+
+
+/**
+ * @param {string} id The display's unique identifier.
+ * @see https://developer.chrome.com/extensions/system.display#method-overscanCalibrationStart
+ */
+chrome.system.display.overscanCalibrationStart = function(id) {};
+
+
+/**
+ * @param {string} id The display's unique identifier.
+ * @param {!chrome.system.display.Insets} delta The amount to change the
+ *     overscan insets.
+ * @see https://developer.chrome.com/extensions/system.display#method-overscanCalibrationAdjust
+ */
+chrome.system.display.overscanCalibrationAdjust = function(id, delta) {};
+
+
+/**
+ * @param {string} id The display's unique identifier.
+ * @see https://developer.chrome.com/extensions/system.display#method-overscanCalibrationReset
+ */
+chrome.system.display.overscanCalibrationReset = function(id) {};
+
+
+/**
+ * @param {string} id The display's unique identifier.
+ * @see https://developer.chrome.com/extensions/system.display#method-overscanCalibrationComplete
+ */
+chrome.system.display.overscanCalibrationComplete = function(id) {};
+
+
+/**
+ * @param {string} id The display's unique identifier.
+ * @param {function(boolean):void=} callback Optional callback to inform the
+ *     caller that the touch calibration has ended. The argument of the callback
+ *     informs if the calibration was a success or not.
+ * @see https://developer.chrome.com/extensions/system.display#method-showNativeTouchCalibration
+ */
+chrome.system.display.showNativeTouchCalibration = function(id, callback) {};
+
+
+/**
+ * @param {string} id The display's unique identifier.
+ * @see https://developer.chrome.com/extensions/system.display#method-startCustomTouchCalibration
+ */
+chrome.system.display.startCustomTouchCalibration = function(id) {};
+
+
+/**
+ * @param {!Object} pairs The pairs of point used to calibrate the display.
+ * @param {!chrome.system.display.Bounds} bounds Bounds of the display when the
+ *     touch calibration was performed. |bounds.left| and |bounds.top| values
+ *     are ignored.
+ * @see https://developer.chrome.com/extensions/system.display#method-completeCustomTouchCalibration
+ */
+chrome.system.display.completeCustomTouchCalibration = function(pairs, bounds) {
+};
+
+
+/**
+ * @param {string} id The display's unique identifier.
+ * @see https://developer.chrome.com/extensions/system.display#method-clearTouchCalibration
+ */
+chrome.system.display.clearTouchCalibration = function(id) {};
+
+
+/**
+ * @type {!ChromeEvent}
+ * @see https://developer.chrome.com/extensions/system.display#event-onDisplayChanged
+ */
+chrome.system.display.onDisplayChanged;
 
 
 chrome.types = {};
@@ -5497,23 +5899,6 @@ chrome.types = {};
  */
 chrome.types.ImageDetails;
 
-
-/**
- * @param {function(!Array.<!chrome.system.display.DisplayInfo>)}
- *     callback Called with an array of objects representing display info.
- */
-chrome.system.display.getInfo = function(callback) {};
-
-
-/**
- * @param {string} id The display's unique identifier.
- * @param {!chrome.system.display.SettableDisplayInfo} info The information
- *     about display properties that should be changed.
- * @param {function()=} opt_callback The callback to execute when the display
- *     info has been changed.
- */
-chrome.system.display.setDisplayProperties =
-    function(id, info, opt_callback) {};
 
 
 /**
@@ -5536,8 +5921,9 @@ chrome.webNavigation = {};
 
 /**
  * @param {Object} details Object with a 'tabId' (number) key.
- * @param {function(!Array.<Object.<string, (boolean|number|string)>>)} callback
+ * @param {function(!Array<Object<string, (boolean|number|string)>>)} callback
  *     Callback function.
+ * @return {undefined}
  */
 chrome.webNavigation.getAllFrames = function(details, callback) {};
 
@@ -5545,8 +5931,9 @@ chrome.webNavigation.getAllFrames = function(details, callback) {};
 /**
  * @param {Object} details Object with 'tabId' (number) and 'frameId' (number)
  *     keys.
- * @param {function(Object.<string, (boolean|string)>)} callback
+ * @param {function(Object<string, (boolean|string)>)} callback
  *     Callback function.
+ * @return {undefined}
  */
 chrome.webNavigation.getFrame = function(details, callback) {};
 
@@ -5587,53 +5974,90 @@ chrome.webNavigation.onTabReplaced;
 chrome.webNavigation.onHistoryStateUpdated;
 
 
+/**
+ * Base event type for WebRequest-releated events.
+ *
+ * The `addListener()` methods for these take more than one argument, so they
+ * cannot just extend `ChromeBaseEvent`.
+ * @interface
+ * @extends {ChromeBaseEventNoListeners}
+ * @template LISTENER
+ */
+function WebRequestBaseEvent() {}
+
+
+/**
+ * @param {LISTENER} listener Listener function.
+ * @param {!RequestFilter} filter A set of filters that restrict
+ *     the events that will be sent to this listener.
+ * @param {!Array<string>=} opt_extraInfoSpec Array of extra information
+ *     that should be passed to the listener function.
+ * @return {undefined}
+ */
+WebRequestBaseEvent.prototype.addListener = function(
+    listener, filter, opt_extraInfoSpec) {};
+
+
+/**
+ * @param {LISTENER} listener Listener function.
+ * @return {undefined}
+ */
+WebRequestBaseEvent.prototype.removeListener = function(listener) {};
+
+
+/**
+ * @param {LISTENER} listener Listener function.
+ * @return {undefined}
+ */
+WebRequestBaseEvent.prototype.hasListener = function(listener) {};
+
+
+/**
+ * @param {LISTENER} listener Listener function.
+ * @return {undefined}
+ */
+WebRequestBaseEvent.prototype.hasListeners = function(listener) {};
+
 
 /**
  * Most event listeners for WebRequest take extra arguments.
- * @see https://developer.chrome.com/extensions/webRequest.html.
- * @constructor
+ * @see https://developer.chrome.com/extensions/webRequest
+ * @interface
+ * @extends {WebRequestBaseEvent<function(!Object)>}
  */
 function WebRequestEvent() {}
 
 
 /**
- * @param {function(!Object): (void|!BlockingResponse)} listener Listener
- *     function.
- * @param {!RequestFilter} filter A set of filters that restrict
- *     the events that will be sent to this listener.
- * @param {Array.<string>=} opt_extraInfoSpec Array of extra information
- *     that should be passed to the listener function.
+ * Some event listeners can be optionally synchronous.
+ * @see https://developer.chrome.com/extensions/webRequest
+ * @interface
+ * @extends {WebRequestBaseEvent<function(!Object): (undefined|!BlockingResponse)>}
  */
-WebRequestEvent.prototype.addListener =
-    function(listener, filter, opt_extraInfoSpec) {};
+function WebRequestOptionallySynchronousEvent() {}
 
 
 /**
- * @param {function(!Object): (void|!BlockingResponse)} listener Listener
- *     function.
+ * The onAuthRequired event listener can be optionally synchronous, and can also
+ * optionally take a callback.
+ * @see https://developer.chrome.com/extensions/webRequest
+ * @interface
+ * @extends {WebRequestBaseEvent<
+ *     function(
+ *         !Object,
+ *         function(!BlockingResponse)=): (undefined|!BlockingResponse)>}
  */
-WebRequestEvent.prototype.removeListener = function(listener) {};
+function WebRequestOnAuthRequiredEvent() {}
 
 
 /**
- * @param {function(!Object): (void|!BlockingResponse)} listener Listener
- *     function.
- */
-WebRequestEvent.prototype.hasListener = function(listener) {};
-
-
-/**
- * @param {function(!Object): (void|!BlockingResponse)} listener Listener
- *     function.
- */
-WebRequestEvent.prototype.hasListeners = function(listener) {};
-
-
-
-/**
- * The onErrorOccurred event takes one less parameter than the others.
- * @see https://developer.chrome.com/extensions/webRequest.html.
- * @constructor
+ * The onErrorOccurred event takes one fewer parameter than the others.
+ *
+ * The `addListener()` methods for these take more than one argument, so they
+ * cannot just extend `ChromeBaseEvent`.
+ * @see https://developer.chrome.com/extensions/webRequest
+ * @interface
+ * @extends {ChromeBaseEventNoListeners}
  */
 function WebRequestOnErrorOccurredEvent() {}
 
@@ -5642,6 +6066,7 @@ function WebRequestOnErrorOccurredEvent() {}
  * @param {function(!Object): void} listener Listener function.
  * @param {!RequestFilter} filter A set of filters that restrict
  *     the events that will be sent to this listener.
+ * @return {undefined}
  */
 WebRequestOnErrorOccurredEvent.prototype.addListener =
     function(listener, filter) {};
@@ -5649,36 +6074,40 @@ WebRequestOnErrorOccurredEvent.prototype.addListener =
 
 /**
  * @param {function(!Object): void} listener Listener function.
+ * @return {undefined}
  */
 WebRequestOnErrorOccurredEvent.prototype.removeListener = function(listener) {};
 
 
 /**
  * @param {function(!Object): void} listener Listener function.
+ * @return {undefined}
  */
 WebRequestOnErrorOccurredEvent.prototype.hasListener = function(listener) {};
 
 
 /**
  * @param {function(!Object): void} listener Listener function.
+ * @return {undefined}
  */
 WebRequestOnErrorOccurredEvent.prototype.hasListeners = function(listener) {};
 
 
 /**
  * @const
- * @see https://developer.chrome.com/extensions/webRequest.html
+ * @see https://developer.chrome.com/extensions/webRequest
  */
 chrome.webRequest = {};
 
 
 /**
  * @param {function(): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 chrome.webRequest.handlerBehaviorChanged = function(opt_callback) {};
 
 
-/** @type {!WebRequestEvent} */
+/** @type {!WebRequestOnAuthRequiredEvent} */
 chrome.webRequest.onAuthRequired;
 
 
@@ -5686,11 +6115,11 @@ chrome.webRequest.onAuthRequired;
 chrome.webRequest.onBeforeRedirect;
 
 
-/** @type {!WebRequestEvent} */
+/** @type {!WebRequestOptionallySynchronousEvent} */
 chrome.webRequest.onBeforeRequest;
 
 
-/** @type {!WebRequestEvent} */
+/** @type {!WebRequestOptionallySynchronousEvent} */
 chrome.webRequest.onBeforeSendHeaders;
 
 
@@ -5702,7 +6131,7 @@ chrome.webRequest.onCompleted;
 chrome.webRequest.onErrorOccurred;
 
 
-/** @type {!WebRequestEvent} */
+/** @type {!WebRequestOptionallySynchronousEvent} */
 chrome.webRequest.onHeadersReceived;
 
 
@@ -5718,7 +6147,7 @@ chrome.webRequest.onSendHeaders;
 
 
 
-/**onKeyEvent
+/**
  * @see https://developer.chrome.com/extensions/management.html
  * @constructor
  */
@@ -5785,15 +6214,15 @@ ExtensionInfo.prototype.offlineEnabled;
 ExtensionInfo.prototype.optionsUrl;
 
 
-/** @type {!Array.<!IconInfo>|undefined} */
+/** @type {!Array<!IconInfo>|undefined} */
 ExtensionInfo.prototype.icons;
 
 
-/** @type {!Array.<string>} */
+/** @type {!Array<string>} */
 ExtensionInfo.prototype.permissions;
 
 
-/** @type {!Array.<string>} */
+/** @type {!Array<string>} */
 ExtensionInfo.prototype.hostPermissions;
 
 
@@ -5805,7 +6234,7 @@ ExtensionInfo.prototype.installType;
 ExtensionInfo.prototype.launchType;
 
 
-/** @type {!Array.<string>|undefined} */
+/** @type {!Array<string>|undefined} */
 ExtensionInfo.prototype.availableLaunchTypes;
 
 
@@ -5825,90 +6254,6 @@ IconInfo.prototype.size;
 IconInfo.prototype.url;
 
 
-
-/**
- * @see https://developer.chrome.com/extensions/tabs
- * @constructor
- */
-function Tab() {}
-
-
-// TODO: Make this field optional once dependent projects have been updated.
-/**
- * @type {number}
- */
-Tab.prototype.id;
-
-
-/** @type {number} */
-Tab.prototype.index;
-
-
-/** @type {number} */
-Tab.prototype.windowId;
-
-
-// TODO: Make this field optional once dependent projects have been updated.
-/**
- * @type {number}
- */
-Tab.prototype.openerTabId;
-
-
-/** @type {boolean} */
-Tab.prototype.highlighted;
-
-
-/** @type {boolean} */
-Tab.prototype.active;
-
-
-/** @type {boolean} */
-Tab.prototype.pinned;
-
-
-// TODO: Make this field optional once dependent projects have been updated.
-/**
- * @type {string}
- */
-Tab.prototype.url;
-
-
-// TODO: Make this field optional once dependent projects have been updated.
-/**
- * @type {string}
- */
-Tab.prototype.title;
-
-
-// TODO: Make this field optional once dependent projects have been updated.
-/**
- * @type {string}
- */
-Tab.prototype.favIconUrl;
-
-
-// TODO: Make this field optional once dependent projects have been updated.
-/**
- * @type {string}
- */
-Tab.prototype.status;
-
-
-/** @type {boolean} */
-Tab.prototype.incognito;
-
-
-/** @type {number|undefined} */
-Tab.prototype.width;
-
-
-/** @type {number|undefined} */
-Tab.prototype.height;
-
-
-/** @type {number|undefined} */
-Tab.prototype.sessionId;
 
 
 
@@ -5943,7 +6288,7 @@ ChromeWindow.prototype.width;
 ChromeWindow.prototype.height;
 
 
-/** @type {Array.<Tab>} */
+/** @type {Array<Tab>} */
 ChromeWindow.prototype.tabs;
 
 
@@ -5965,238 +6310,11 @@ ChromeWindow.prototype.alwaysOnTop;
 
 
 /**
- * @see https://developer.chrome.com/extensions/events.html
- * @constructor
- */
-function ChromeEvent() {}
-
-
-/** @param {!Function} callback */
-ChromeEvent.prototype.addListener = function(callback) {};
-
-
-/** @param {!Function} callback */
-ChromeEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {!Function} callback
- * @return {boolean}
- */
-ChromeEvent.prototype.hasListener = function(callback) {};
-
-
-/** @return {boolean} */
-ChromeEvent.prototype.hasListeners = function() {};
-
-
-
-/**
- * Event whose listeners take a string parameter.
- * @constructor
- */
-function ChromeStringEvent() {}
-
-
-/** @param {function(string): void} callback */
-ChromeStringEvent.prototype.addListener = function(callback) {};
-
-
-/** @param {function(string): void} callback */
-ChromeStringEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {function(string): void} callback
- * @return {boolean}
- */
-ChromeStringEvent.prototype.hasListener = function(callback) {};
-
-
-/** @return {boolean} */
-ChromeStringEvent.prototype.hasListeners = function() {};
-
-
-
-/**
- * Event whose listeners take a boolean parameter.
- * @constructor
- */
-
-function ChromeBooleanEvent() {}
-
-
-/**
- * @param {function(boolean): void} callback
- */
-ChromeBooleanEvent.prototype.addListener = function(callback) {};
-
-
-/**
- * @param {function(boolean): void} callback
- */
-ChromeBooleanEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {function(boolean): void} callback
- * @return {boolean}
- */
-ChromeBooleanEvent.prototype.hasListener = function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-ChromeBooleanEvent.prototype.hasListeners = function() {};
-
-
-
-/**
- * Event whose listeners take a number parameter.
- * @constructor
- */
-
-function ChromeNumberEvent() {}
-
-
-/**
- * @param {function(number): void} callback
- */
-ChromeNumberEvent.prototype.addListener = function(callback) {};
-
-
-/**
- * @param {function(number): void} callback
- */
-ChromeNumberEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {function(number): void} callback
- * @return {boolean}
- */
-ChromeNumberEvent.prototype.hasListener = function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-ChromeNumberEvent.prototype.hasListeners = function() {};
-
-
-
-/**
- * Event whose listeners take an Object parameter.
- * @constructor
- */
-function ChromeObjectEvent() {}
-
-
-/**
- * @param {function(!Object): void} callback Callback.
- */
-ChromeObjectEvent.prototype.addListener = function(callback) {};
-
-
-/**
- * @param {function(!Object): void} callback Callback.
- */
-ChromeObjectEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {function(!Object): void} callback Callback.
- * @return {boolean}
- */
-ChromeObjectEvent.prototype.hasListener = function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-ChromeObjectEvent.prototype.hasListeners = function() {};
-
-
-
-/**
  * Event whose listeners take an ExtensionInfo parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!ExtensionInfo)>}
  */
 function ChromeExtensionInfoEvent() {}
-
-
-/** @param {function(!ExtensionInfo): void} callback */
-ChromeExtensionInfoEvent.prototype.addListener = function(callback) {};
-
-
-/** @param {function(!ExtensionInfo): void} callback */
-ChromeExtensionInfoEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {function(!ExtensionInfo): void} callback
- * @return {boolean}
- */
-ChromeExtensionInfoEvent.prototype.hasListener = function(callback) {};
-
-
-/** @return {boolean} */
-ChromeExtensionInfoEvent.prototype.hasListeners = function() {};
-
-
-
-/**
- * Event whose listeners take a string array parameter.
- * @constructor
- */
-function ChromeStringArrayEvent() {}
-
-
-/** @param {function(!Array.<string>): void} callback */
-ChromeStringArrayEvent.prototype.addListener = function(callback) {};
-
-
-/** @param {function(!Array.<string>): void} callback */
-ChromeStringArrayEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {function(!Array.<string>): void} callback
- * @return {boolean}
- */
-ChromeStringArrayEvent.prototype.hasListener = function(callback) {};
-
-
-/** @return {boolean} */
-ChromeStringArrayEvent.prototype.hasListeners = function() {};
-
-
-
-/**
- * Event whose listeners take two strings as parameters.
- * @constructor
- */
-function ChromeStringStringEvent() {}
-
-
-/** @param {function(string, string): void} callback */
-ChromeStringStringEvent.prototype.addListener = function(callback) {};
-
-
-/** @param {function(string, string): void} callback */
-ChromeStringStringEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {function(string, string): void} callback
- * @return {boolean}
- */
-ChromeStringStringEvent.prototype.hasListener = function(callback) {};
-
-
-/** @return {boolean} */
-ChromeStringStringEvent.prototype.hasListeners = function() {};
 
 
 /**
@@ -6219,6 +6337,7 @@ chrome.pushMessaging.onMessage;
  *     not given, the callback.
  * @param {function(!chrome.pushMessaging.ChannelIdResult)=} opt_callback
  *     Callback.
+ * @return {undefined}
  */
 chrome.pushMessaging.getChannelId =
     function(interactiveOrCallback, opt_callback) {};
@@ -6227,99 +6346,10 @@ chrome.pushMessaging.getChannelId =
 
 /**
  * Event whose listeners take a chrome.pushMessaging.Message parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.pushMessaging.Message)>}
  */
 chrome.pushMessaging.PushMessageEvent = function() {};
-
-
-/**
- * @param {function(!chrome.pushMessaging.Message): void} callback
- */
-chrome.pushMessaging.PushMessageEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.pushMessaging.Message): void} callback
- */
-chrome.pushMessaging.PushMessageEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.pushMessaging.Message): void} callback
- * @return {boolean}
- */
-chrome.pushMessaging.PushMessageEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-chrome.pushMessaging.PushMessageEvent.prototype.hasListeners = function() {};
-
-
-
-/**
- * @see http://developer.chrome.com/apps/runtime.html#type-Port
- * @constructor
- */
-function Port() {}
-
-
-/** @type {string} */
-Port.prototype.name;
-
-
-/** @type {!ChromeEvent} */
-Port.prototype.onDisconnect;
-
-
-/** @type {!ChromeEvent} */
-Port.prototype.onMessage;
-
-
-/** @type {MessageSender} */
-Port.prototype.sender;
-
-
-/**
- * @param {Object.<string>} obj Message object.
- */
-Port.prototype.postMessage = function(obj) {};
-
-
-/**
- * Note: as of 2012-04-12, this function is no longer documented on
- * the public web pages, but there are still existing usages.
- */
-Port.prototype.disconnect = function() {};
-
-
-
-/**
- * @see http://developer.chrome.com/extensions/runtime.html#type-MessageSender
- * @constructor
- */
-function MessageSender() {}
-
-
-/** @type {!Tab|undefined} */
-MessageSender.prototype.tab;
-
-
-/** @type {string|undefined} */
-MessageSender.prototype.id;
-
-
-/** @type {string|undefined} */
-MessageSender.prototype.url;
-
-
-/** @type {string|undefined} */
-MessageSender.prototype.tlsChannelId;
-
 
 
 /**
@@ -6361,7 +6391,7 @@ BookmarkTreeNode.prototype.dateGroupModified;
 BookmarkTreeNode.prototype.unmodifiable;
 
 
-/** @type {!Array.<!BookmarkTreeNode>|undefined} */
+/** @type {!Array<!BookmarkTreeNode>|undefined} */
 BookmarkTreeNode.prototype.children;
 
 
@@ -6425,7 +6455,7 @@ function CookieStore() {}
 CookieStore.prototype.id;
 
 
-/** @type {Array.<number>} */
+/** @type {Array<number>} */
 CookieStore.prototype.tabIds;
 
 
@@ -6437,11 +6467,11 @@ CookieStore.prototype.tabIds;
 function OnClickData() {}
 
 
-/** @type {number} */
+/** @type {number|string} */
 OnClickData.prototype.menuItemId;
 
 
-/** @type {number} */
+/** @type {number|string} */
 OnClickData.prototype.parentMenuItemId;
 
 
@@ -6465,12 +6495,24 @@ OnClickData.prototype.pageUrl;
 OnClickData.prototype.frameUrl;
 
 
+/** @type {number} */
+OnClickData.prototype.frameId;
+
+
 /** @type {string} */
 OnClickData.prototype.selectionText;
 
 
-/** @type {string} */
+/** @type {boolean} */
 OnClickData.prototype.editable;
+
+
+/** @type {boolean} */
+OnClickData.prototype.wasChecked;
+
+
+/** @type {boolean} */
+OnClickData.prototype.checked;
 
 
 
@@ -6483,7 +6525,6 @@ function Debuggee() {}
 
 /** @type {number} */
 Debuggee.prototype.tabId;
-
 
 
 /**
@@ -6510,30 +6551,34 @@ function ContentSetting() {}
 
 
 /**
- * @param {!Object.<string,string>} details Settings details.
+ * @param {!Object<string,string>} details Settings details.
  * @param {function(): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 ContentSetting.prototype.clear = function(details, opt_callback) {};
 
 
 /**
- * @param {!Object.<string,(string|boolean|ResourceIdentifier)>} details
+ * @param {!Object<string,(string|boolean|ResourceIdentifier)>} details
  *     Settings details.
  * @param {function(): void} callback Callback function.
+ * @return {undefined}
  */
 ContentSetting.prototype.get = function(details, callback) {};
 
 
 /**
  * @param {function(): void} callback Callback function.
+ * @return {undefined}
  */
 ContentSetting.prototype.getResourceIdentifiers = function(callback) {};
 
 
 /**
- * @param {!Object.<string,(string|ResourceIdentifier)>} details
+ * @param {!Object<string,(string|ResourceIdentifier)>} details
  *     Settings details.
  * @param {function(): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 ContentSetting.prototype.set = function(details, opt_callback) {};
 
@@ -6606,7 +6651,7 @@ VisitItem.prototype.transition;
 function FileHandlerExecuteEventDetails() {}
 
 
-/** @type {!Array.<!FileEntry>} */
+/** @type {!Array<!FileEntry>} */
 FileHandlerExecuteEventDetails.prototype.entries;
 
 
@@ -6726,7 +6771,7 @@ ProxyRules.prototype.proxyForFtp;
 ProxyRules.prototype.fallbackProxy;
 
 
-/** @type {!Array.<string>} */
+/** @type {!Array<string>} */
 ProxyRules.prototype.bypassList;
 
 
@@ -6775,32 +6820,14 @@ ProxyConfig.prototype.mode;
  * The event listener for Storage receives an Object mapping each
  * key that changed to its corresponding StorageChange for that item.
  *
+ * Listener will receive an object that maps each key to its StorageChange,
+ * and the namespace ("sync" or "local") of the storage area the changes
+ * are for.
  * @see https://developer.chrome.com/extensions/storage.html
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!Object<string, !StorageChange>, string)>}
  */
 function StorageChangeEvent() {}
-
-
-/**
- * @param {function(!Object.<string, !StorageChange>, string)} callback
- *    Listener will receive an object that maps each key to its StorageChange,
- *    and the namespace ("sync" or "local") of the storage area the changes
- *    are for.
- */
-StorageChangeEvent.prototype.addListener = function(callback) {};
-
-
-/** @param {function(!Object.<string, !StorageChange>, string)} callback */
-StorageChangeEvent.prototype.removeListener = function(callback) {};
-
-
-/** @param {function(!Object.<string, !StorageChange>, string)} callback */
-StorageChangeEvent.prototype.hasListener = function(callback) {};
-
-
-/** @param {function(!Object.<string, !StorageChange>, string)} callback */
-StorageChangeEvent.prototype.hasListeners = function(callback) {};
-
 
 
 /**
@@ -6827,49 +6854,55 @@ function StorageArea() {}
 
 
 /**
- * Removes all items from storage.
- * @param {function(): void=} opt_callback Callback function.
- */
-StorageArea.prototype.clear = function(opt_callback) {};
-
-
-/**
- * @param {(string|!Array.<string>|!Object|null)=} opt_keys
+ * @param {(string|!Array<string>|!Object|null|function(!Object))=}
+ * keysOrCallback
  *    A single key to get, list of keys to get, or a dictionary
  *    specifying default values (see description of the
  *    object). An empty list or object will return an empty
  *    result object. Pass in null to get the entire contents of storage.
- * @param {function(Object)=} opt_callback Callback with storage items, or null
+ * @param {function(!Object)=} opt_callback Callback with storage items, or null
  *    on failure.
+ * @return {undefined}
  */
-StorageArea.prototype.get = function(opt_keys, opt_callback) {};
+StorageArea.prototype.get = function(keysOrCallback, opt_callback) {};
 
 
 /**
- * @param {(string|!Array.<string>)} keys
+ * @param {(string|!Array<string>|null|function(!Object))=} keysOrCallback
+ *    A single key or list of keys to get the total usage for. An empty list
+ *    will return 0. Pass in null to get the total usage of all of storage.
+ * @param {function(number)=} opt_callback
+ *    Callback with the amount of space being used by storage.
+ * @return {undefined}
+ */
+StorageArea.prototype.getBytesInUse = function(keysOrCallback, opt_callback) {};
+
+
+/**
+ * @param {!Object<string>} items
+ *    Object specifying items to augment storage
+ *    with. Values that cannot be serialized (functions, etc) will be ignored.
+ * @param {function()=} opt_callback Callback.
+ * @return {undefined}
+ */
+StorageArea.prototype.set = function(items, opt_callback) { };
+
+
+/**
+ * @param {(string|!Array<string>)} keys
  *    A single key or a list of keys for items to remove.
  * @param {function()=} opt_callback Callback.
+ * @return {undefined}
  */
 StorageArea.prototype.remove = function(keys, opt_callback) {};
 
 
 /**
- * @param {!Object.<string>} keys
- *    Object specifying items to augment storage
- *    with. Values that cannot be serialized (functions, etc) will be ignored.
- * @param {function()=} opt_callback Callback.
+ * Removes all items from storage.
+ * @param {function(): void=} opt_callback Callback function.
+ * @return {undefined}
  */
-StorageArea.prototype.set = function(keys, opt_callback) { };
-
-
-/**
- * @param {(string|!Array.<string>|null)=} opt_keys
- *    A single key or list of keys to get the total usage for. An empty list
- *    will return 0. Pass in null to get the total usage of all of storage.
- * @param {function(number)=} opt_callback
- *    Callback with the amount of space being used by storage.
- */
-StorageArea.prototype.getBytesInUse = function(opt_keys, opt_callback) { };
+StorageArea.prototype.clear = function(opt_callback) {};
 
 
 
@@ -6883,13 +6916,15 @@ function ChromeSetting() {}
 /**
  * @param {Object} details Object with a 'scope' (string) key.
  * @param {function(): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 ChromeSetting.prototype.clear = function(details, opt_callback) {};
 
 
 /**
  * @param {Object} details Object with an 'incognito' (boolean) key.
- * @param {function(Object.<string, *>): void} callback Callback function.
+ * @param {function(Object<string, *>): void} callback Callback function.
+ * @return {undefined}
  */
 ChromeSetting.prototype.get = function(details, callback) {};
 
@@ -6898,6 +6933,7 @@ ChromeSetting.prototype.get = function(details, callback) {};
  * @param {Object} details Object with a 'value' (*) key and an optional
  *     'scope' (string) key.
  * @param {function(): void=} opt_callback Callback function.
+ * @return {undefined}
  */
 ChromeSetting.prototype.set = function(details, opt_callback) {};
 
@@ -6908,82 +6944,49 @@ ChromeSetting.prototype.onChange;
 
 
 /**
- * @see https://developer.chrome.com/extensions/webRequest.html#type-RequestFilter
- * @constructor
+ * @see https://developer.chrome.com/extensions/webRequest#type-RequestFilter
+ * @typedef {?{
+ *   urls: !Array<string>,
+ *   types: (!Array<string>|undefined),
+ *   tabId: (number|undefined),
+ *   windowId: (number|undefined),
+ * }}
  */
-function RequestFilter() {}
-
-
-/** @type {!Array.<string>} */
-RequestFilter.prototype.urls;
-
-
-/** @type {!Array.<string>} */
-RequestFilter.prototype.types;
-
-
-/** @type {number} */
-RequestFilter.prototype.tabId;
-
-
-/** @type {number} */
-RequestFilter.prototype.windowId;
+var RequestFilter;
 
 
 
 /**
- * @see https://developer.chrome.com/extensions/webRequest.html#type-HttpHeaders
- * @constructor
+ * @see https://developer.chrome.com/extensions/webRequest#type-HttpHeaders
+ * @typedef {?{
+ *   name: string,
+ *   value: (string|undefined),
+ *   binaryValue: (!Array<number>|undefined),
+ * }}
  */
-function HttpHeader() {}
-
-
-/** @type {string} */
-HttpHeader.prototype.name;
-
-
-/** @type {string} */
-HttpHeader.prototype.value;
-
-
-/** @type {!Array.<number>} */
-HttpHeader.prototype.binaryValue;
-
-
-/**
- * @see https://developer.chrome.com/extensions/webRequest.html#type-HttpHeaders
- * @typedef {Array.<!HttpHeader>}
- * @private
- */
-var HttpHeaders_;
+var HttpHeader;
 
 
 
 /**
- * @see https://developer.chrome.com/extensions/webRequest.html#type-BlockingResponse
- * @constructor
+ * @see https://developer.chrome.com/extensions/webRequest#type-HttpHeaders
+ * @typedef {?Array<!HttpHeader>}
  */
-function BlockingResponse() {}
+chrome.webRequest.HttpHeaders;
 
 
-/** @type {boolean} */
-BlockingResponse.prototype.cancel;
 
-
-/** @type {string} */
-BlockingResponse.prototype.redirectUrl;
-
-
-/** @type {!HttpHeaders_} */
-BlockingResponse.prototype.requestHeaders;
-
-
-/** @type {!HttpHeaders_} */
-BlockingResponse.prototype.responseHeaders;
-
-
-/** @type {Object.<string,string>} */
-BlockingResponse.prototype.authCredentials;
+/**
+ * @see https://developer.chrome.com/extensions/webRequest#type-BlockingResponse
+ * @typedef {?{
+ *   cancel: (boolean|undefined),
+ *   redirectUrl: (string|undefined),
+ *   requestHeaders: (!chrome.webRequest.HttpHeaders|undefined),
+ *   responseHeaders: (!chrome.webRequest.HttpHeaders|undefined),
+ *   authCredentials: (!{username: string, password: string}|undefined),
+ * }}
+ */
+var BlockingResponse;
 
 
 
@@ -7036,6 +7039,7 @@ chrome.fileSystem = {};
  *     {@code chrome.fileSystem.restoreEntry}.
  * @param {function(string)} callback A success callback.
  * @see http://developer.chrome.com/apps/fileSystem.html#method-getDisplayPath
+ * @return {undefined}
  */
 chrome.fileSystem.getDisplayPath = function(entry, callback) {};
 
@@ -7044,6 +7048,7 @@ chrome.fileSystem.getDisplayPath = function(entry, callback) {};
  * @param {!Entry} entry The entry to get a writable entry for.
  * @param {function(!Entry)} callback A success callback.
  * @see http://developer.chrome.com/apps/fileSystem.html#method-getWritableEntry
+ * @return {undefined}
  */
 chrome.fileSystem.getWritableEntry = function(entry, callback) {};
 
@@ -7052,6 +7057,7 @@ chrome.fileSystem.getWritableEntry = function(entry, callback) {};
  * @param {!Entry} entry The entry to query writability.
  * @param {function(boolean)} callback A success callback.
  * @see http://developer.chrome.com/apps/fileSystem.html#method-isWritableEntry
+ * @return {undefined}
  */
 chrome.fileSystem.isWritableEntry = function(entry, callback) {};
 
@@ -7059,8 +7065,8 @@ chrome.fileSystem.isWritableEntry = function(entry, callback) {};
 /**
  * @typedef {{
  *   description: (string|undefined),
- *   mimeTypes: (!Array.<string>|undefined),
- *   extensions: (!Array.<string>|undefined)
+ *   mimeTypes: (!Array<string>|undefined),
+ *   extensions: (!Array<string>|undefined)
  * }}
  * @see http://developer.chrome.com/apps/fileSystem.html#method-chooseEntry
  */
@@ -7071,7 +7077,7 @@ chrome.fileSystem.AcceptsOption;
  * @typedef {{
  *   type: (string|undefined),
  *   suggestedName: (string|undefined),
- *   accepts: (!Array.<!chrome.fileSystem.AcceptsOption>|undefined),
+ *   accepts: (!Array<!chrome.fileSystem.AcceptsOption>|undefined),
  *   acceptsAllTypes: (boolean|undefined),
  *   acceptsMultiple: (boolean|undefined)
  * }}
@@ -7107,11 +7113,12 @@ chrome.fileSystem.Volume.prototype.writable;
 
 /**
  * @param {!chrome.fileSystem.ChooseEntryOptions|
- *     function(Entry=, !Array.<!FileEntry>=)} optionsOrCallback The
+ *     function(Entry=, !Array<!FileEntry>=)} optionsOrCallback The
  *     options for the file prompt or the callback.
- * @param {function(Entry=, !Array.<!FileEntry>=)=} opt_callback A success
+ * @param {function(Entry=, !Array<!FileEntry>=)=} opt_callback A success
  *     callback, if arg1 is options.
  * @see http://developer.chrome.com/apps/fileSystem.html#method-chooseEntry
+ * @return {undefined}
  */
 chrome.fileSystem.chooseEntry = function(optionsOrCallback, opt_callback) {};
 
@@ -7120,6 +7127,7 @@ chrome.fileSystem.chooseEntry = function(optionsOrCallback, opt_callback) {};
  * @param {string} id The ID of the file entry to restore.
  * @param {function(!Entry)} callback A success callback.
  * @see http://developer.chrome.com/apps/fileSystem.html#method-restoreEntry
+ * @return {undefined}
  */
 chrome.fileSystem.restoreEntry = function(id, callback) {};
 
@@ -7128,6 +7136,7 @@ chrome.fileSystem.restoreEntry = function(id, callback) {};
  * @param {string} id The ID of the file entry to query restorability.
  * @param {function(boolean)} callback A success callback.
  * @see http://developer.chrome.com/apps/fileSystem.html#method-isRestorable
+ * @return {undefined}
  */
 chrome.fileSystem.isRestorable = function(id, callback) {};
 
@@ -7148,6 +7157,7 @@ chrome.fileSystem.retainEntry = function(entry) {};
  *     system in case of a success. Otherwise the error is passed as
  *     chrome.runtime.lastError.
  * @see http://developer.chrome.com/apps/fileSystem.html#method-requestFileSystem
+ * @return {undefined}
  */
 chrome.fileSystem.requestFileSystem = function(options, callback) {};
 
@@ -7157,6 +7167,7 @@ chrome.fileSystem.requestFileSystem = function(options, callback) {};
  *     callback with the file system list in case of a success. Otherwise the
  *     error is passed as chrome.runtime.lastError.
  * @see http://developer.chrome.com/apps/fileSystem.html#method-getVolumeList
+ * @return {undefined}
  */
 chrome.fileSystem.getVolumeList = function(callback) {};
 
@@ -7188,6 +7199,7 @@ chrome.syncFileSystem = {};
  * @param {function(!FileSystem)} callback A callback type for
  *     requestFileSystem.
  * @see https://developer.chrome.com/apps/syncFileSystem#method-requestFileSystem
+ * @return {undefined}
  */
 chrome.syncFileSystem.requestFileSystem = function(callback) {};
 
@@ -7204,6 +7216,7 @@ chrome.syncFileSystem.requestFileSystem = function(callback) {};
  * @param {function()=} opt_callback
  *
  * @see https://developer.chrome.com/apps/syncFileSystem#method-setConflictResolutionPolicy
+ * @return {undefined}
  */
 chrome.syncFileSystem.setConflictResolutionPolicy =
     function(policy, opt_callback) {};
@@ -7215,6 +7228,7 @@ chrome.syncFileSystem.setConflictResolutionPolicy =
  * @param {function(string)} callback Accepting any of 'last_write_win'
  *     or 'manual'.
  * @see https://developer.chrome.com/apps/syncFileSystem#method-getConflictResolutionPolicy
+ * @return {undefined}
  */
 chrome.syncFileSystem.getConflictResolutionPolicy = function(callback) {};
 
@@ -7227,6 +7241,7 @@ chrome.syncFileSystem.getConflictResolutionPolicy = function(callback) {};
  * @param {function(!Object)} callback Taking an object substantially similar
  *     to {@code {'usageBytes': number, quotaBytes: number}}.
  * @see https://developer.chrome.com/apps/syncFileSystem#method-getUsageAndQuota
+ * @return {undefined}
  */
 chrome.syncFileSystem.getUsageAndQuota = function(fileSystem, callback) {};
 
@@ -7241,6 +7256,7 @@ chrome.syncFileSystem.getUsageAndQuota = function(fileSystem, callback) {};
  *     or 'conflicting'.
  *
  * @see https://developer.chrome.com/apps/syncFileSystem#method-getFileStatus
+ * @return {undefined}
  */
 chrome.syncFileSystem.getFileStatus = function(fileEntry, callback) {};
 
@@ -7249,11 +7265,12 @@ chrome.syncFileSystem.getFileStatus = function(fileEntry, callback) {};
  * Returns each FileStatus for the given fileEntry array. Typically called
  * with the result from dirReader.readEntries().
  *
- * @param {!Array.<!FileEntry>} fileEntries
- * @param {function(!Array.<!Object>)} callback Each object will look like:
+ * @param {!Array<!FileEntry>} fileEntries
+ * @param {function(!Array<!Object>)} callback Each object will look like:
  *     {@code {'fileEntry': Entry, 'status': string, 'error': string?}}.
  *
  * @see https://developer.chrome.com/apps/syncFileSystem#method-getFileStatuses
+ * @return {undefined}
  */
 chrome.syncFileSystem.getFileStatuses = function(fileEntries, callback) {};
 
@@ -7267,6 +7284,7 @@ chrome.syncFileSystem.getFileStatuses = function(fileEntries, callback) {};
  *     'authentication_required', 'temporary_unavailable', or 'disabled'.
  *
  * @see https://developer.chrome.com/apps/syncFileSystem#method-getServiceStatus
+ * @return {undefined}
  */
 chrome.syncFileSystem.getServiceStatus = function(callback) {};
 
@@ -7310,6 +7328,7 @@ chrome.alarms = {};
  * @param {!chrome.alarms.AlarmCreateInfo=} opt_alarmInfo If a name was passed
  *     as arg1, the info used to create the alarm.
  * @see http://developer.chrome.com/extensions/alarms.html#method-create
+ * @return {undefined}
  */
 chrome.alarms.create = function(nameOrAlarmCreateInfo, opt_alarmInfo) {};
 
@@ -7322,14 +7341,16 @@ chrome.alarms.create = function(nameOrAlarmCreateInfo, opt_alarmInfo) {};
  * @param {function(!chrome.alarms.Alarm)=} opt_callback If a name was passed
  *     as arg1, the callback to invoke with the alarm.
  * @see http://developer.chrome.com/extensions/alarms.html#method-get
+ * @return {undefined}
  */
 chrome.alarms.get = function(nameOrCallback, opt_callback) {};
 
 
 /**
  * Gets an array of all the alarms.
- * @param {function(!Array.<!chrome.alarms.Alarm>)} callback
+ * @param {function(!Array<!chrome.alarms.Alarm>)} callback
  * @see http://developer.chrome.com/extensions/alarms.html#method-getAll
+ * @return {undefined}
  */
 chrome.alarms.getAll = function(callback) {};
 
@@ -7340,6 +7361,7 @@ chrome.alarms.getAll = function(callback) {};
  * @param {function(boolean)=} opt_callback A callback that will be called with
  *     a boolean for whether the alarm was cleared.
  * @see http://developer.chrome.com/extensions/alarms.html#method-clear
+ * @return {undefined}
  */
 chrome.alarms.clear = function(opt_name, opt_callback) {};
 
@@ -7349,6 +7371,7 @@ chrome.alarms.clear = function(opt_name, opt_callback) {};
  * @param {function(boolean)=} opt_callback A callback that will be called with
  *     a boolean for whether the alarms were cleared.
  * @see http://developer.chrome.com/extensions/alarms.html#method-clearAll
+ * @return {undefined}
  */
 chrome.alarms.clearAll = function(opt_callback) {};
 
@@ -7363,35 +7386,10 @@ chrome.alarms.onAlarm;
 
 
 /**
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.alarms.Alarm)>}
  */
 chrome.alarms.AlarmEvent = function() {};
-
-
-/**
- * @param {function(!chrome.alarms.Alarm): void} callback
- */
-chrome.alarms.AlarmEvent.prototype.addListener = function(callback) {};
-
-
-/**
- * @param {function(!chrome.alarms.Alarm): void} callback
- */
-chrome.alarms.AlarmEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {function(!chrome.alarms.Alarm): void} callback
- * @return {boolean}
- */
-chrome.alarms.AlarmEvent.prototype.hasListener = function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-chrome.alarms.AlarmEvent.prototype.hasListeners = function() {};
-
 
 
 /**
@@ -7443,11 +7441,50 @@ chrome.alarms.AlarmCreateInfo;
 chrome.hid = {};
 
 
+
+/**
+ * @constructor
+ * @see https://developer.chrome.com/apps/hid#type-DeviceFilter
+ */
+chrome.hid.DeviceFilter = function() {};
+
+
+/**
+ * Device vendor ID.
+ * @type {number|undefined}
+ */
+chrome.hid.DeviceFilter.prototype.vendorId;
+
+
+/**
+ * Device product ID, only checked if the vendor ID matches.
+ * @type {number|undefined}
+ */
+chrome.hid.DeviceFilter.prototype.productId;
+
+
+/**
+ * HID usage page identifier.
+ * @type {number|undefined}
+ */
+chrome.hid.DeviceFilter.prototype.usagePage;
+
+
+/**
+ * HID usage identifier, checked only if the HID usage page matches.
+ * @type {number|undefined}
+ */
+chrome.hid.DeviceFilter.prototype.usage;
+
+
 /**
  * @typedef {?{
- *   vendorId: number,
- *   productId: number
+ *   vendorId: (number|undefined),
+ *   productId: (number|undefined),
+ *   filters: (!Array<!chrome.hid.DeviceFilter>|undefined)
  * }}
+ * Deprecated since Chrome 39: vendorId, productId
+ * Since Chrome 39: filters
  * @see https://developer.chrome.com/apps/hid#method-getDevices
  */
 chrome.hid.HidGetDevicesOptions;
@@ -7455,28 +7492,104 @@ chrome.hid.HidGetDevicesOptions;
 
 /**
  * @typedef {?{
+ *   multiple: (boolean|undefined),
+ *   filters: (!Array<!chrome.hid.DeviceFilter>|undefined)
+ * }}
+ * @see https://developer.chrome.com/apps/hid#method-getUserSelectedDevices
+ */
+chrome.hid.HidGetUserSelectedDevicesOptions;
+
+
+/**
+ * @typedef {?{
  *   usagePage: number,
  *   usage: number,
- *   reportIds: !Array.<number>
+ *   reportIds: !Array<number>
  * }}
 * @see https://developer.chrome.com/apps/hid#method-getDevices
 */
 chrome.hid.HidDeviceUsage;
 
 
+
 /**
- * @typedef {?{
- *   deviceId: number,
- *   vendorId: number,
- *   productId: number,
- *   collections: !Array.<!chrome.hid.HidDeviceUsage>,
- *   maxInputReportSize: number,
- *   maxOutputReportSize: number,
- *   maxFeatureReportSize: number
- * }}
-* @see https://developer.chrome.com/apps/hid#method-getDevices
-*/
-chrome.hid.HidDeviceInfo;
+ * @constructor
+ * @see https://developer.chrome.com/apps/hid#type-HidDeviceInfo
+ */
+chrome.hid.HidDeviceInfo = function() {};
+
+
+/**
+ * Opaque device ID.
+ * @type {number}
+ */
+chrome.hid.HidDeviceInfo.prototype.deviceId;
+
+
+/**
+ * Vendor ID.
+ * @type {number}
+ */
+chrome.hid.HidDeviceInfo.prototype.vendorId;
+
+
+/**
+ * Product ID.
+ * @type {number}
+ */
+chrome.hid.HidDeviceInfo.prototype.productId;
+
+
+/**
+ * The product name read from the device, if available.
+ * Since Chrome 46.
+ * @type {string}
+ */
+chrome.hid.HidDeviceInfo.prototype.productName;
+
+
+/**
+ * The serial number read from the device, if available.
+ * Since Chrome 46.
+ * @type {string}
+ */
+chrome.hid.HidDeviceInfo.prototype.serialNumber;
+
+
+/**
+ * Top-level collections from this device's report descriptors.
+ * @type {!Array<!chrome.hid.HidDeviceUsage>}
+ */
+chrome.hid.HidDeviceInfo.prototype.collections;
+
+
+/**
+ * Top-level collection's maximum input report size.
+ * @type {number}
+ */
+chrome.hid.HidDeviceInfo.prototype.maxInputReportSize;
+
+
+/**
+ * Top-level collection's maximum output report size.
+ * @type {number}
+ */
+chrome.hid.HidDeviceInfo.prototype.maxOutputReportSize;
+
+
+/**
+ * Top-level collection's maximum feature report size.
+ * @type {number}
+ */
+chrome.hid.HidDeviceInfo.prototype.maxFeatureReportSize;
+
+
+/**
+ * Raw device report descriptor (not available on Windows).
+ * Since Chrome 42.
+ * @type {!ArrayBuffer}
+ */
+chrome.hid.HidDeviceInfo.prototype.reportDescriptor;
 
 
 /**
@@ -7494,10 +7607,26 @@ chrome.hid.HidConnectInfo;
  * vendorId/productId/interfaceId tuple.
  * @param {!chrome.hid.HidGetDevicesOptions} options The properties to search
  *     for on target devices.
- * @param {function(!Array.<!Object>)} callback Invoked with a list of
- *     |HidDeviceInfo|s on complete.
+ * @param {function(!Array<!chrome.hid.HidDeviceInfo>)} callback Invoked with a
+ *     list of |HidDeviceInfo|s on complete.
+ * @return {undefined}
  */
 chrome.hid.getDevices = function(options, callback) {};
+
+
+/**
+ * @see https://developer.chrome.com/apps/hid#method-getUserSelectedDevices
+ * Presents a device picker to the user and returns HidDeviceInfo objects for
+ * the devices selected. If the user cancels the picker devices will be empty. A
+ * user gesture is required for the dialog to display. Without a user gesture,
+ * the callback will run as though the user cancelled. If multiple filters are
+ * provided devices matching any filter will be displayed.
+ * @param {!chrome.hid.HidGetUserSelectedDevicesOptions} options
+ * @param {function(!Array<!chrome.hid.HidDeviceInfo>)} callback Invoked with a
+ *     list of |HidDeviceInfo|s on complete.
+ * @return {undefined}
+ */
+chrome.hid.getUserSelectedDevices = function(options, callback) {};
 
 
 /**
@@ -7506,6 +7635,7 @@ chrome.hid.getDevices = function(options, callback) {};
  * @param {number} deviceId The ID of the device to open.
  * @param {function(!Object=)} callback Invoked with an |HidConnectInfo| if the
  *     connection succeeds, or undefined if it fails.
+ * @return {undefined}
  */
 chrome.hid.connect = function(deviceId, callback) {};
 
@@ -7516,6 +7646,7 @@ chrome.hid.connect = function(deviceId, callback) {};
  * @param {number} connectionId The connection to close.
  * @param {function()=} opt_callback The callback to invoke once the connection
  *     is closed.
+ * @return {undefined}
  */
 chrome.hid.disconnect = function(connectionId, opt_callback) {};
 
@@ -7526,6 +7657,7 @@ chrome.hid.disconnect = function(connectionId, opt_callback) {};
  * @param {number} connectionId The connection from which to receive the report.
  * @param {function(number, !ArrayBuffer)} callback The callback to invoke with
  *     the received report.
+ * @return {undefined}
  */
 chrome.hid.receive = function(connectionId, callback) {};
 
@@ -7538,6 +7670,7 @@ chrome.hid.receive = function(connectionId, callback) {};
  * @param {!ArrayBuffer} data The report data.
  * @param {function()} callback The callback to invoke once the write is
  *     finished.
+ * @return {undefined}
  */
 chrome.hid.send = function(connectionId, reportId, data, callback) {};
 
@@ -7551,6 +7684,7 @@ chrome.hid.send = function(connectionId, reportId, data, callback) {};
  * @param {number} size The size of the feature report to receive.
  * @param {function(!ArrayBuffer)} callback The callback to invoke with the
  *     received report.
+ * @return {undefined}
  */
 chrome.hid.receiveFeatureReport =
     function(connectionId, reportId, size, callback) {};
@@ -7565,9 +7699,33 @@ chrome.hid.receiveFeatureReport =
  * @param {!ArrayBuffer} data The report data.
  * @param {function()} callback The callback to invoke once the write is
  *     finished.
+ * @return {undefined}
  */
 chrome.hid.sendFeatureReport =
     function(connectionId, reportId, data, callback) {};
+
+
+
+/**
+ * Event whose listeners take an HidDeviceInfo parameter.
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.hid.HidDeviceInfo)>}
+ */
+chrome.hid.DeviceAddedEvent = function() {};
+
+
+/**
+ * @type {!chrome.hid.DeviceAddedEvent}
+ * @see https://developer.chrome.com/apps/hid#event-onDeviceAdded
+ */
+chrome.hid.onDeviceAdded;
+
+
+/**
+ * @type {!ChromeNumberEvent}
+ * @see https://developer.chrome.com/apps/hid#event-onDeviceRemoved
+ */
+chrome.hid.onDeviceRemoved;
 
 
 /**
@@ -7606,9 +7764,9 @@ chrome.notifications.NotificationItem;
  *   contextMessage: (string|undefined),
  *   priority: (number|undefined),
  *   eventTime: (number|undefined),
- *   buttons: (!Array.<!chrome.notifications.NotificationButton>|undefined),
+ *   buttons: (!Array<!chrome.notifications.NotificationButton>|undefined),
  *   imageUrl: (string|undefined),
- *   items: (!Array.<!chrome.notifications.NotificationItem>|undefined),
+ *   items: (!Array<!chrome.notifications.NotificationItem>|undefined),
  *   progress: (number|undefined),
  *   isClickable: (boolean|undefined)
  * }}
@@ -7653,6 +7811,7 @@ chrome.notifications.ButtonCallback;
  *     opt_optionsOrCallback
  * @param {(function(string): void)=} opt_callback
  * @see http://developer.chrome.com/extensions/notifications.html#method-create
+ * @return {undefined}
  */
 chrome.notifications.create = function(notificationIdOrOptions,
     opt_optionsOrCallback, opt_callback) {};
@@ -7663,6 +7822,7 @@ chrome.notifications.create = function(notificationIdOrOptions,
  * @param {!chrome.notifications.NotificationOptions} options
  * @param {chrome.notifications.BooleanCallback=} opt_callback
  * @see http://developer.chrome.com/extensions/notifications.html#method-update
+ * @return {undefined}
  */
 chrome.notifications.update =
     function(notificationId, options, opt_callback) {};
@@ -7672,6 +7832,7 @@ chrome.notifications.update =
  * @param {string} notificationId
  * @param {!chrome.notifications.BooleanCallback=} opt_callback
  * @see http://developer.chrome.com/extensions/notifications.html#method-clear
+ * @return {undefined}
  */
 chrome.notifications.clear = function(notificationId, opt_callback) {};
 
@@ -7679,6 +7840,7 @@ chrome.notifications.clear = function(notificationId, opt_callback) {};
 /**
  * @see http://developer.chrome.com/extensions/notifications.html#method-getAll
  * @param {!chrome.notifications.ObjectCallback} callback
+ * @return {undefined}
  */
 chrome.notifications.getAll = function(callback) {};
 
@@ -7686,6 +7848,7 @@ chrome.notifications.getAll = function(callback) {};
 /**
  * @see http://developer.chrome.com/extensions/notifications.html#method-getPermissionLevel
  * @param {function(string): void} callback takes 'granted' or 'denied'
+ * @return {undefined}
  */
 chrome.notifications.getPermissionLevel = function(callback) {};
 
@@ -7732,71 +7895,18 @@ chrome.notifications.onShowSettings;
 
 /**
  * @interface
+ * @extends {ChromeBaseEvent<!chrome.notifications.ClosedCallback>}
  * @see http://developer.chrome.com/extensions/notifications.html#event-onClosed
  */
 chrome.notifications.ClosedEvent = function() {};
 
 
 /**
- * @param {!chrome.notifications.ClosedCallback} callback
- */
-chrome.notifications.ClosedEvent.prototype.addListener = function(callback) {};
-
-
-/**
- * @param {!chrome.notifications.ClosedCallback} callback
- */
-chrome.notifications.ClosedEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {!chrome.notifications.ClosedCallback} callback
- * @return {boolean}
- */
-chrome.notifications.ClosedEvent.prototype.hasListener = function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-chrome.notifications.ClosedEvent.prototype.hasListeners = function() {};
-
-
-
-/**
  * @interface
+ * @extends {ChromeBaseEvent<!chrome.notifications.ButtonCallback>}
  * @see http://developer.chrome.com/extensions/notifications.html#event-onButtonClicked
  */
 chrome.notifications.ButtonClickedEvent = function() {};
-
-
-/**
- * @param {!chrome.notifications.ButtonCallback} callback
- */
-chrome.notifications.ButtonClickedEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {!chrome.notifications.ButtonCallback} callback
- */
-chrome.notifications.ButtonClickedEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {!chrome.notifications.ButtonCallback} callback
- * @return {boolean}
- */
-chrome.notifications.ButtonClickedEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-chrome.notifications.ButtonClickedEvent.prototype.hasListeners = function() {};
 
 
 /**
@@ -7830,32 +7940,10 @@ chrome.system.storage.StorageUnitInfo.capacity;
 
 /**
  * Event whose listeners take a StorageUnitInfoEvent parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.system.storage.StorageUnitInfo)>}
  */
 chrome.system.storage.StorageUnitInfoEvent = function() {};
-
-
-/** @param {function(!chrome.system.storage.StorageUnitInfo): void} callback */
-chrome.system.storage.StorageUnitInfoEvent.prototype.addListener =
-    function(callback) {};
-
-
-/** @param {function(!chrome.system.storage.StorageUnitInfo): void} callback */
-chrome.system.storage.StorageUnitInfoEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.system.storage.StorageUnitInfo): void} callback
- * @return {boolean}
- */
-chrome.system.storage.StorageUnitInfoEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.system.storage.StorageUnitInfoEvent.prototype.hasListeners =
-    function() {};
 
 
 /** @type {chrome.system.storage.StorageUnitInfoEvent} */
@@ -7868,7 +7956,8 @@ chrome.system.storage.onDetached;
 
 /**
  * Gets the storage information from the system.
- * @param {function(!Array.<!chrome.system.storage.StorageUnitInfo>)} callback
+ * @param {function(!Array<!chrome.system.storage.StorageUnitInfo>)} callback
+ * @return {undefined}
  */
 chrome.system.storage.getInfo = function(callback) {};
 
@@ -7878,6 +7967,7 @@ chrome.system.storage.getInfo = function(callback) {};
  * @param {string} id The transient device ID from StorageUnitInfo.
  * @param {function(string)} callback Callback function where the value
  *     is any of: "success", "in_use", "no_such_device", "failure"
+ * @return {undefined}
  */
 chrome.system.storage.ejectDevice = function(id, callback) {};
 
@@ -7885,8 +7975,9 @@ chrome.system.storage.ejectDevice = function(id, callback) {};
 /**
  * Gets the available capacity of a specified storage device.
  * @param {string} id The transient device ID from StorageUnitInfo.
- * @param {function(Object.<string, number>)} callback A callback function that
+ * @param {function(Object<string, number>)} callback A callback function that
  *     accepts an object with {@code id} and {@code availableCapacity} fields.
+ * @return {undefined}
  */
 chrome.system.storage.getAvailableCapacity = function(id, callback) {};
 
@@ -7915,6 +8006,32 @@ chrome.usb.Device.prototype.vendorId;
 chrome.usb.Device.prototype.productId;
 
 
+/** @type {number} */
+chrome.usb.Device.prototype.version;
+
+
+/**
+ * The product name read from the device, if available.
+ * Since Chrome 46.
+ * @type {string}
+ */
+chrome.usb.Device.prototype.productName;
+
+/**
+ * The manufacturer name read from the device, if available.
+ * Since Chrome 46.
+ * @type {string}
+ */
+chrome.usb.Device.prototype.manufacturerName;
+
+/**
+ * The serial number read from the device, if available.
+ * Since Chrome 46.
+ * @type {string}
+ */
+chrome.usb.Device.prototype.serialNumber;
+
+
 
 /** @constructor */
 chrome.usb.ConnectionHandle = function ConnectionHandle() {};
@@ -7937,7 +8054,8 @@ chrome.usb.ConnectionHandle.prototype.productId;
  *   direction: string,
  *   endpoint: number,
  *   length: (number|undefined),
- *   data: (!ArrayBuffer|undefined)
+ *   data: (!ArrayBuffer|undefined),
+ *   timeout: (number|undefined)
  * }}
  */
 chrome.usb.GenericTransferInfo;
@@ -7952,7 +8070,8 @@ chrome.usb.GenericTransferInfo;
  *   value: number,
  *   index: number,
  *   length: (number|undefined),
- *   data: (!ArrayBuffer|undefined)
+ *   data: (!ArrayBuffer|undefined),
+ *   timeout: (number|undefined)
  * }}
  */
 chrome.usb.ControlTransferInfo;
@@ -7973,7 +8092,7 @@ chrome.usb.TransferResultInfo.prototype.data;
 
 /**
  * @typedef {?{
- *   deviceId: number,
+ *   vendorId: number,
  *   productId: number,
  *   interfaceId: (number|undefined)
  * }}
@@ -7982,12 +8101,186 @@ chrome.usb.FindDevicesOptions;
 
 
 /**
+ * @typedef {?{
+ *   vendorId: (number|undefined),
+ *   producId: (number|undefined),
+ *   interfaceClass: (number|undefined),
+ *   interfaceSubclass: (number|undefined),
+ *   interfaceProtocol: (number|undefined)
+ * }}
+ */
+chrome.usb.DeviceFilter;
+
+
+/**
+ * @typedef {?{
+ *   vendorId: (number|undefined),
+ *   productId: (number|undefined),
+ *   filters: (!Array<!chrome.usb.DeviceFilter>|undefined)
+ * }}
+ */
+chrome.usb.GetDevicesOptions;
+
+
+/**
+ * @typedef {?{
+ *   multiple: (boolean|undefined),
+ *   filters: (!Array<!chrome.usb.DeviceFilter>|undefined)
+ * }}
+ */
+chrome.usb.GetUserSelectedDevicesOptions;
+
+
+/**
+ * @typedef {?{
+ *   transferInfo: !chrome.usb.GenericTransferInfo,
+ *   packets: number,
+ *   packetLength: number
+ * }}
+ */
+chrome.usb.IsochronousTransferInfo;
+
+
+
+/** @constructor */
+chrome.usb.EndpointDescriptor = function() {};
+
+
+/** @type {number} */
+chrome.usb.EndpointDescriptor.prototype.address;
+
+/** @type {string} */
+chrome.usb.EndpointDescriptor.prototype.type;
+
+
+/** @type {string} */
+chrome.usb.EndpointDescriptor.prototype.direction;
+
+
+/** @type {number} */
+chrome.usb.EndpointDescriptor.prototype.maximumPacketSize;
+
+
+/** @type {(string|undefined)} */
+chrome.usb.EndpointDescriptor.prototype.synchronization;
+
+
+/** @type {(string|undefined)} */
+chrome.usb.EndpointDescriptor.prototype.usage;
+
+
+/** @type {(number|undefined)} */
+chrome.usb.EndpointDescriptor.prototype.pollingInterval;
+
+
+/** @type {!ArrayBuffer} */
+chrome.usb.EndpointDescriptor.prototype.extra_data;
+
+
+
+/** @constructor */
+chrome.usb.InterfaceDescriptor = function() {};
+
+
+/** @type {number} */
+chrome.usb.InterfaceDescriptor.prototype.interfaceNumber;
+
+
+/** @type {number} */
+chrome.usb.InterfaceDescriptor.prototype.alternateSetting;
+
+
+/** @type {number} */
+chrome.usb.InterfaceDescriptor.prototype.interfaceClass;
+
+
+/** @type {number} */
+chrome.usb.InterfaceDescriptor.prototype.interfaceSubclass;
+
+
+/** @type {number} */
+chrome.usb.InterfaceDescriptor.prototype.interfaceProtocol;
+
+
+/** @type {(string|undefined)} */
+chrome.usb.InterfaceDescriptor.prototype.description;
+
+
+/** @type {!Array.<!chrome.usb.EndpointDescriptor>} */
+chrome.usb.InterfaceDescriptor.prototype.endpoints;
+
+
+/** @type {!ArrayBuffer} */
+chrome.usb.InterfaceDescriptor.prototype.extra_data;
+
+
+
+/** @constructor */
+chrome.usb.ConfigDescriptor = function() {};
+
+
+/** @type {boolean} */
+chrome.usb.ConfigDescriptor.prototype.active;
+
+
+/** @type {number} */
+chrome.usb.ConfigDescriptor.prototype.configurationValue;
+
+
+/** @type {string|undefined} */
+chrome.usb.ConfigDescriptor.prototype.description;
+
+
+/** @type {boolean} */
+chrome.usb.ConfigDescriptor.prototype.selfPowered;
+
+
+/** @type {boolean} */
+chrome.usb.ConfigDescriptor.prototype.remoteWakeup;
+
+
+/** @type {number} */
+chrome.usb.ConfigDescriptor.prototype.maxPower;
+
+
+/** @type {!Array<!chrome.usb.InterfaceDescriptor>} */
+chrome.usb.ConfigDescriptor.prototype.interfaces;
+
+
+/** @type {!ArrayBuffer} */
+chrome.usb.ConfigDescriptor.prototype.extra_data;
+
+
+/**
  * @see http://developer.chrome.com/apps/usb.html#method-getDevices
- * @param {!Object} options The properties to search for on target devices.
- * @param {function(!Array.<!chrome.usb.Device>)} callback Invoked with a list
+ * @param {!chrome.usb.GetDevicesOptions} options The properties to
+ *     search for on target devices.
+ * @param {function(!Array<!chrome.usb.Device>)} callback Invoked with a list
  *     of |Device|s on complete.
+ * @return {undefined}
  */
 chrome.usb.getDevices = function(options, callback) {};
+
+
+/**
+ * @see http://developer.chrome.com/apps/usb.html#method-getUserSelectedDevices
+ * @param {!chrome.usb.GetUserSelectedDevicesOptions} options Configuration of
+ *     the device picker dialog box.
+ * @param {function(!Array<!chrome.usb.Device>)} callback Invoked with a list
+ *     of |Device|s on complete.
+ * @return {undefined}
+ */
+chrome.usb.getUserSelectedDevices = function(options, callback) {};
+
+
+/**
+ * @see http://developer.chrome.com/apps/usb.html#method-getConfigurations
+ * @param {!chrome.usb.Device} device The device to fetch descriptors from.
+ * @param {function(!Array<!chrome.usb.ConfigDescriptor>)} callback Invoked with
+ *     the full set of device configuration descriptors.
+ * @return {undefined}
+ */
+chrome.usb.getConfigurations = function(device, callback) {};
 
 
 /**
@@ -7995,6 +8288,7 @@ chrome.usb.getDevices = function(options, callback) {};
  * @param {!chrome.usb.Device} device The device to request access to.
  * @param {number} interfaceId
  * @param {function(boolean)} callback
+ * @return {undefined}
  */
 chrome.usb.requestAccess = function(device, interfaceId, callback) {};
 
@@ -8002,8 +8296,9 @@ chrome.usb.requestAccess = function(device, interfaceId, callback) {};
 /**
  * @see http://developer.chrome.com/apps/usb.html#method-openDevice
  * @param {!chrome.usb.Device} device The device to open.
- * @param {function(!chrome.usb.ConnectionHandle=)} callback Invoked with the
+ * @param {function(!chrome.usb.ConnectionHandle)} callback Invoked with the
  *     created ConnectionHandle on complete.
+ * @return {undefined}
  */
 chrome.usb.openDevice = function(device, callback) {};
 
@@ -8012,8 +8307,9 @@ chrome.usb.openDevice = function(device, callback) {};
  * @see http://developer.chrome.com/apps/usb.html#method-findDevices
  * @param {!chrome.usb.FindDevicesOptions} options The properties to search for
  *     on target devices.
- * @param {function(!Array.<!chrome.usb.ConnectionHandle>)} callback Invoked
+ * @param {function(!Array<!chrome.usb.ConnectionHandle>)} callback Invoked
  *     with the opened ConnectionHandle on complete.
+ * @return {undefined}
  */
 chrome.usb.findDevices = function(options, callback) {};
 
@@ -8023,16 +8319,40 @@ chrome.usb.findDevices = function(options, callback) {};
  * @param {!chrome.usb.ConnectionHandle} handle The connection handle to close.
  * @param {function()=} opt_callback The callback to invoke once the device is
  *     closed.
+ * @return {undefined}
  */
 chrome.usb.closeDevice = function(handle, opt_callback) {};
+
+
+/**
+ * @see http://developer.chrome.com/apps/usb.html#method-setConfiguration
+ * @param {!chrome.usb.ConnectionHandle} handle The connection handle for which
+ *     to select a device configuration.
+ * @param {number} configurationValue The configuration to select.
+ * @param {function()} callback The callback to invoke on complete.
+ * @return {undefined}
+ */
+chrome.usb.setConfiguration = function(handle, configurationValue, callback) {};
+
+
+/**
+ * @see http://developer.chrome.com/apps/usb.html#method-getConfiguration
+ * @param {!chrome.usb.ConnectionHandle} handle The connection handle for which
+ *     to get the current device configuration descriptor.
+ * @param {function(!chrome.usb.ConfigDescriptor)} callback The callback to
+ *     invoke on complete.
+ * @return {undefined}
+ */
+chrome.usb.getConfiguration = function(handle, callback) {};
 
 
 /**
  * @see http://developer.chrome.com/apps/usb.html#method-listInterfaces
  * @param {!chrome.usb.ConnectionHandle} handle The device from which the
  *     interfaces should be listed.
- * @param {function(!Array.<!Object>)} callback
- *     The callback to invoke when the interfaces are enumerated.
+ * @param {function(!Array<!chrome.usb.InterfaceDescriptor>)} callback The
+ *     callback to invoke when the interfaces are enumerated.
+ * @return {undefined}
  */
 chrome.usb.listInterfaces = function(handle, callback) {};
 
@@ -8044,6 +8364,7 @@ chrome.usb.listInterfaces = function(handle, callback) {};
  * @param {number} interfaceNumber
  * @param {function()} callback The callback to invoke once the interface is
  *     claimed.
+ * @return {undefined}
  */
 chrome.usb.claimInterface = function(handle, interfaceNumber, callback) {};
 
@@ -8055,6 +8376,7 @@ chrome.usb.claimInterface = function(handle, interfaceNumber, callback) {};
  * @param {number} interfaceNumber
  * @param {function()} callback The callback to invoke once the interface is
  *     released.
+ * @return {undefined}
  */
 chrome.usb.releaseInterface = function(handle, interfaceNumber, callback) {};
 
@@ -8067,6 +8389,7 @@ chrome.usb.releaseInterface = function(handle, interfaceNumber, callback) {};
  * @param {number} alternateSetting The alternate setting to set.
  * @param {function()} callback The callback to invoke once the interface
  *     setting is set.
+ * @return {undefined}
  */
 chrome.usb.setInterfaceAlternateSetting = function(
     handle, interfaceNumber, alternateSetting, callback) {};
@@ -8080,6 +8403,7 @@ chrome.usb.setInterfaceAlternateSetting = function(
  *     transfer.
  * @param {function(!chrome.usb.TransferResultInfo)} callback Invoked once the
  *     transfer has completed.
+ * @return {undefined}
  */
 chrome.usb.controlTransfer = function(handle, transferInfo, callback) {};
 
@@ -8092,6 +8416,7 @@ chrome.usb.controlTransfer = function(handle, transferInfo, callback) {};
  *     transfer. See GenericTransferInfo.
  * @param {function(!chrome.usb.TransferResultInfo)} callback Invoked once the
  *     transfer has completed.
+ * @return {undefined}
  */
 chrome.usb.bulkTransfer = function(handle, transferInfo, callback) {};
 
@@ -8104,6 +8429,7 @@ chrome.usb.bulkTransfer = function(handle, transferInfo, callback) {};
  *     transfer. See GenericTransferInfo.
  * @param {function(!chrome.usb.TransferResultInfo)} callback Invoked once the
  *     transfer has completed.
+ * @return {undefined}
  */
 chrome.usb.interruptTransfer = function(handle, transferInfo, callback) {};
 
@@ -8112,10 +8438,11 @@ chrome.usb.interruptTransfer = function(handle, transferInfo, callback) {};
  * @see http://developer.chrome.com/apps/usb.html#method-isochronousTransfer
  * @param {!chrome.usb.ConnectionHandle} handle A connection handle to make the
  *     transfer on.
- * @param {!Object} transferInfo The parameters to the transfer. See
- *     IsochronousTransferInfo.
+ * @param {!chrome.usb.IsochronousTransferInfo} transferInfo The parameters to
+ *     the transfer.
  * @param {function(!chrome.usb.TransferResultInfo)} callback Invoked once the
  *     transfer has been completed.
+ * @return {undefined}
  */
 chrome.usb.isochronousTransfer = function(handle, transferInfo, callback) {};
 
@@ -8125,8 +8452,32 @@ chrome.usb.isochronousTransfer = function(handle, transferInfo, callback) {};
  * @param {!chrome.usb.ConnectionHandle} handle A connection handle to reset.
  * @param {function(boolean)} callback Invoked once the device is reset with a
  *     boolean indicating whether the reset completed successfully.
+ * @return {undefined}
  */
 chrome.usb.resetDevice = function(handle, callback) {};
+
+
+
+/**
+ * Event whose listeners take an chrome.usb.Device parameter.
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.usb.Device)>}
+ */
+chrome.usb.DeviceEvent = function() {};
+
+
+/**
+ * @type {!chrome.usb.DeviceEvent}
+ * @see https://developer.chrome.com/apps/usb#event-onDeviceAdded
+ */
+chrome.usb.onDeviceAdded;
+
+
+/**
+ * @type {!chrome.usb.DeviceEvent}
+ * @see https://developer.chrome.com/apps/usb#event-onDeviceRemoved
+ */
+chrome.usb.onDeviceRemoved;
 
 
 /**
@@ -8181,6 +8532,7 @@ chrome.serial.ConnectionInfo;
  * @param {function(!Array<!Object>)} callback Invoked with a
  *     list of ports on complete.
  * @see https://developer.chrome.com/apps/serial#method-getDevices
+ * @return {undefined}
  */
 chrome.serial.getDevices = function(callback) {};
 
@@ -8195,6 +8547,7 @@ chrome.serial.getDevices = function(callback) {};
  * @param {function(!chrome.serial.ConnectionInfo)=} opt_callback Invoked with
  *     the created ConnectionInfo on complete.
  * @see https://developer.chrome.com/apps/serial#method-connect
+ * @return {undefined}
  */
 chrome.serial.connect = function(path, optionsOrCallback, opt_callback) {};
 
@@ -8207,6 +8560,7 @@ chrome.serial.connect = function(path, optionsOrCallback, opt_callback) {};
  * @param {function(boolean)} callback Called when the configuration has
  *     completed.
  * @see https://developer.chrome.com/apps/serial#method-update
+ * @return {undefined}
  */
 chrome.serial.update = function(connectionId, options, callback) {};
 
@@ -8217,6 +8571,7 @@ chrome.serial.update = function(connectionId, options, callback) {};
  * @param {function(boolean)} callback Called when the connection
  *     has been closed.
  * @see https://developer.chrome.com/apps/serial#method-disconnect
+ * @return {undefined}
  */
 chrome.serial.disconnect = function(connectionId, callback) {};
 
@@ -8227,6 +8582,7 @@ chrome.serial.disconnect = function(connectionId, callback) {};
  * @param {boolean} paused Flag to indicate whether to pause or unpause.
  * @param {function()} callback Called when the configuration has completed.
  * @see https://developer.chrome.com/apps/serial#method-setPaused
+ * @return {undefined}
  */
 chrome.serial.setPaused = function(connectionId, paused, callback) {};
 
@@ -8237,6 +8593,7 @@ chrome.serial.setPaused = function(connectionId, paused, callback) {};
  * @param {function(!chrome.serial.ConnectionInfo)} callback
  *     Called with connection state information when available.
  * @see https://developer.chrome.com/apps/serial#method-getInfo
+ * @return {undefined}
  */
 chrome.serial.getInfo = function(connectionId, callback) {};
 
@@ -8244,9 +8601,10 @@ chrome.serial.getInfo = function(connectionId, callback) {};
 /**
  * Retrieves the list of currently opened serial port connections owned by
  * the application.
- * @param {function(!Array.<!chrome.serial.ConnectionInfo>)} callback
+ * @param {function(!Array<!chrome.serial.ConnectionInfo>)} callback
  *     Called with the list of |ConnectionInfo|s when available.
  * @see https://developer.chrome.com/apps/serial#method-getConnections
+ * @return {undefined}
  */
 chrome.serial.getConnections = function(callback) {};
 
@@ -8258,6 +8616,7 @@ chrome.serial.getConnections = function(callback) {};
  * @param {function(!Object)} callback Called when the operation has
  *     completed.
  * @see https://developer.chrome.com/apps/serial#method-send
+ * @return {undefined}
  */
 chrome.serial.send = function(connectionId, data, callback) {};
 
@@ -8267,6 +8626,7 @@ chrome.serial.send = function(connectionId, data, callback) {};
  * @param {number} connectionId The id of the opened connection.
  * @param {function(boolean)} callback
  * @see https://developer.chrome.com/apps/serial#method-flush
+ * @return {undefined}
  */
 chrome.serial.flush = function(connectionId, callback) {};
 
@@ -8278,6 +8638,7 @@ chrome.serial.flush = function(connectionId, callback) {};
  * @param {number} connectionId The id of the opened connection.
  * @param {function(!Object)} callback
  * @see https://developer.chrome.com/apps/serial#method-getControlSignals
+ * @return {undefined}
  */
 chrome.serial.getControlSignals = function(connectionId, callback) {};
 
@@ -8299,6 +8660,7 @@ chrome.serial.ControlSignals;
  * @param {function(boolean)} callback Called once the control signals
  *     have been set.
  * @see https://developer.chrome.com/apps/serial#method-setControlSignals
+ * @return {undefined}
  */
 chrome.serial.setControlSignals = function(connectionId, signals, callback) {};
 
@@ -8321,36 +8683,6 @@ chrome.serial.onReceive;
 chrome.serial.onReceiveError;
 
 
-/**
- * @const
- * @see https://developer.chrome.com/apps/webstore
- */
-chrome.webstore = {};
-
-
-/**
- * @param {string|function()|function(string)=}
- *     opt_urlOrSuccessCallbackOrFailureCallback Either the URL to install or
- *     the succcess callback taking no arg or the failure callback taking an
- *     error string arg.
- * @param {function()|function(string)=} opt_successCallbackOrFailureCallback
- *     Either the succcess callback taking no arg or the failure callback
- *     taking an error string arg.
- * @param {function(string)=} opt_failureCallback The failure callback.
- */
-chrome.webstore.install = function(
-    opt_urlOrSuccessCallbackOrFailureCallback,
-    opt_successCallbackOrFailureCallback,
-    opt_failureCallback) {};
-
-
-/** @type {!ChromeStringEvent} */
-chrome.webstore.onInstallStageChanged;
-
-
-/** @type {!ChromeNumberEvent} */
-chrome.webstore.onDownloadProgress;
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /////////////////////////// Chrome Private APIs ////////////////////////////////
@@ -8363,12 +8695,14 @@ chrome.screenlockPrivate = {};
 
 /**
  * @param {string} message Displayed on the unlock screen.
+ * @return {undefined}
  */
 chrome.screenlockPrivate.showMessage = function(message) {};
 
 
 /**
  * @param {function(boolean)} callback
+ * @return {undefined}
  */
 chrome.screenlockPrivate.getLocked = function(callback) {};
 
@@ -8376,6 +8710,7 @@ chrome.screenlockPrivate.getLocked = function(callback) {};
 /**
  * @param {boolean} locked If true and the screen is unlocked, locks the screen.
  *     If false and the screen is locked, unlocks the screen.
+ * @return {undefined}
  */
 chrome.screenlockPrivate.setLocked = function(locked) {};
 
@@ -8392,6 +8727,7 @@ chrome.musicManagerPrivate = {};
 
 /**
  * @param {function(string): void} callback
+ * @return {undefined}
  */
 chrome.musicManagerPrivate.getDeviceId = function(callback) {};
 
@@ -8423,6 +8759,7 @@ chrome.mediaGalleriesPrivate.AddGalleryWatchCallback;
 /**
  * @param {string} galleryId
  * @param {!chrome.mediaGalleriesPrivate.AddGalleryWatchCallback} callback
+ * @return {undefined}
  */
 chrome.mediaGalleriesPrivate.addGalleryWatch = function(galleryId, callback) {};
 
@@ -8450,76 +8787,17 @@ chrome.mediaGalleriesPrivate.onGalleryChanged;
 
 /**
  * @interface
+ * @extends {ChromeBaseEvent<!chrome.mediaGalleriesPrivate.DeviceCallback>}
  * @deprecated Use {chrome.system.storage.DeviceEvent}.
  */
 chrome.mediaGalleriesPrivate.DeviceEvent = function() {};
 
 
 /**
- * @param {!chrome.mediaGalleriesPrivate.DeviceCallback} callback
- * @deprecated Use {chrome.system.storage.DeviceEvent.addListener}.
- */
-chrome.mediaGalleriesPrivate.DeviceEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {!chrome.mediaGalleriesPrivate.DeviceCallback} callback
- * @deprecated Use {chrome.system.storage.DeviceEvent.removeListener}.
- */
-chrome.mediaGalleriesPrivate.DeviceEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {!chrome.mediaGalleriesPrivate.DeviceCallback} callback
- * @deprecated Use {chrome.system.storage.DeviceEvent.hasListener}.
- */
-chrome.mediaGalleriesPrivate.DeviceEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/**
- * @return {boolean}
- * @deprecated Use {chrome.system.storage.DeviceEvent.hasListener}
- */
-chrome.mediaGalleriesPrivate.DeviceEvent.prototype.hasListeners =
-    function(callback) {};
-
-
-
-/**
  * @interface
+ * @extends {ChromeBaseEvent<!chrome.mediaGalleriesPrivate.GalleryChangeCallback>}
  */
 chrome.mediaGalleriesPrivate.GalleryChangeEvent = function() {};
-
-
-/**
- * @param {!chrome.mediaGalleriesPrivate.GalleryChangeCallback} callback
- */
-chrome.mediaGalleriesPrivate.GalleryChangeEvent.prototype.addListener =
-    function(callback) {};
-
-
-/**
- * @param {!chrome.mediaGalleriesPrivate.GalleryChangeCallback} callback
- */
-chrome.mediaGalleriesPrivate.GalleryChangeEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {!chrome.mediaGalleriesPrivate.GalleryChangeCallback} callback
- */
-chrome.mediaGalleriesPrivate.GalleryChangeEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/**
- * @return {boolean}
- */
-chrome.mediaGalleriesPrivate.GalleryChangeEvent.prototype.hasListeners =
-    function() {};
 
 
 /**
@@ -8758,6 +9036,7 @@ chrome.networkingPrivate.NetworkFilter;
 /**
  * @param {string} guid
  * @param {function(!Object)} callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.getProperties = function(guid, callback) {};
 
@@ -8765,6 +9044,7 @@ chrome.networkingPrivate.getProperties = function(guid, callback) {};
 /**
  * @param {string} guid
  * @param {function(!Object)} callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.getManagedProperties = function(guid, callback) {};
 
@@ -8772,6 +9052,7 @@ chrome.networkingPrivate.getManagedProperties = function(guid, callback) {};
 /**
  * @param {string} guid
  * @param {function(!chrome.networkingPrivate.NetworkStateProperties)} callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.getState = function(guid, callback) {};
 
@@ -8782,6 +9063,7 @@ chrome.networkingPrivate.getState = function(guid, callback) {};
  * @param {string} guid
  * @param {!Object} properties
  * @param {function()=} opt_callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.setProperties =
     function(guid, properties, opt_callback) {};
@@ -8794,6 +9076,7 @@ chrome.networkingPrivate.setProperties =
  * @param {!Object} properties
  * @param {function(string)=} opt_callback Returns guid of the configured
  *     configuration.
+ * @return {undefined}
  */
 chrome.networkingPrivate.createNetwork =
     function(shared, properties, opt_callback) {};
@@ -8802,52 +9085,64 @@ chrome.networkingPrivate.createNetwork =
 /**
  * @param {string} guid
  * @param {function()=} opt_callback Called when the operation has completed.
+ * @return {undefined}
  */
 chrome.networkingPrivate.forgetNetwork = function(guid, opt_callback) {};
 
 
 /**
  * @param {!chrome.networkingPrivate.NetworkFilter} filter
- * @param {function(!Array.<!chrome.networkingPrivate.NetworkStateProperties>)}
+ * @param {function(!Array<!chrome.networkingPrivate.NetworkStateProperties>)}
  *     callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.getNetworks = function(filter, callback) {};
 
 
 /**
  * @param {string} type
- * @param {function(!Array.<!chrome.networkingPrivate.NetworkStateProperties>)}
+ * @param {function(!Array<!chrome.networkingPrivate.NetworkStateProperties>)}
  *      callback
  * @deprecated Use chrome.networkingPrivate.getNetworks with filter.visible=true
+ * @return {undefined}
  */
 chrome.networkingPrivate.getVisibleNetworks = function(type, callback) {};
 
 
 /**
- * @param {function(!Array.<string>)} callback
+ * @param {function(!Array<string>)} callback
  * @deprecated Use chrome.networkingPrivate.getDeviceStates.
+ * @return {undefined}
  */
 chrome.networkingPrivate.getEnabledNetworkTypes = function(callback) {};
 
 
 /**
- * @param {function(!Array.<!chrome.networkingPrivate.DeviceStateProperties>)}
+ * @param {function(!Array<!chrome.networkingPrivate.DeviceStateProperties>)}
  *     callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.getDeviceStates = function(callback) {};
 
 
-/** @param {string} networkType */
+/**
+ * @param {string} networkType
+ * @return {undefined}
+ */
 chrome.networkingPrivate.enableNetworkType = function(networkType) {};
 
 
-/** @param {string} networkType */
+/**
+ * @param {string} networkType
+ * @return {undefined}
+ */
 chrome.networkingPrivate.disableNetworkType = function(networkType) {};
 
 
 /**
  * Requests that the networking subsystem scan for new networks and update the
  * list returned by getVisibleNetworks.
+ * @return {undefined}
  */
 chrome.networkingPrivate.requestNetworkScan = function() {};
 
@@ -8855,6 +9150,7 @@ chrome.networkingPrivate.requestNetworkScan = function() {};
 /**
  * @param {string} guid
  * @param {function()=} opt_callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.startConnect = function(guid, opt_callback) {};
 
@@ -8862,6 +9158,7 @@ chrome.networkingPrivate.startConnect = function(guid, opt_callback) {};
 /**
  * @param {string} guid
  * @param {function()=} opt_callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.startDisconnect = function(guid, opt_callback) {};
 
@@ -8870,6 +9167,7 @@ chrome.networkingPrivate.startDisconnect = function(guid, opt_callback) {};
  * @param {string} guid
  * @param {(string|function())=} opt_carrierOrCallback
  * @param {function()=} opt_callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.startActivate =
     function(guid, opt_carrierOrCallback, opt_callback) {};
@@ -8878,6 +9176,7 @@ chrome.networkingPrivate.startActivate =
 /**
  * @param {!chrome.networkingPrivate.VerificationProperties} verificationInfo
  * @param {function(boolean)} callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.verifyDestination =
     function(verificationInfo, callback) {};
@@ -8887,6 +9186,7 @@ chrome.networkingPrivate.verifyDestination =
  * @param {!chrome.networkingPrivate.VerificationProperties} verificationInfo
  * @param {string} guid
  * @param {function(string)} callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.verifyAndEncryptCredentials =
     function(verificationInfo, guid, callback) {};
@@ -8896,6 +9196,7 @@ chrome.networkingPrivate.verifyAndEncryptCredentials =
  * @param {!chrome.networkingPrivate.VerificationProperties} verificationInfo
  * @param {string} data
  * @param {function(string)} callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.verifyAndEncryptData =
     function(verificationInfo, data, callback) {};
@@ -8905,6 +9206,7 @@ chrome.networkingPrivate.verifyAndEncryptData =
  * @param {string} ipOrMacAddress
  * @param {boolean} enabled
  * @param {function(string)=} opt_callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.setWifiTDLSEnabledState =
     function(ipOrMacAddress, enabled, opt_callback) {};
@@ -8913,6 +9215,7 @@ chrome.networkingPrivate.setWifiTDLSEnabledState =
 /**
  * @param {string} ipOrMacAddress
  * @param {function(string)} callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.getWifiTDLSStatus =
     function(ipOrMacAddress, callback) {};
@@ -8921,6 +9224,7 @@ chrome.networkingPrivate.getWifiTDLSStatus =
 /**
  * @param {string} guid
  * @param {function(string)} callback
+ * @return {undefined}
  */
 chrome.networkingPrivate.getCaptivePortalStatus = function(guid, callback) {};
 
@@ -8931,6 +9235,10 @@ chrome.networkingPrivate.onNetworksChanged;
 
 /** @type {!ChromeStringArrayEvent} */
 chrome.networkingPrivate.onNetworkListChanged;
+
+
+/** @type {!ChromeEvent} */
+chrome.networkingPrivate.onDeviceStateListChanged;
 
 
 /** @type {!ChromeStringStringEvent} */
@@ -8967,31 +9275,39 @@ chrome.mdns.MdnsService.prototype.serviceHostPort;
 chrome.mdns.MdnsService.prototype.ipAddress;
 
 
-/** @type {!Array.<string>} */
+/** @type {!Array<string>} */
 chrome.mdns.MdnsService.prototype.serviceData;
 
 
 /**
  * Event whose listeners take an array of MdnsService parameter.
- * @constructor
+ *
+ * The `addListener()` methods for these take more than one argument, so they
+ * cannot just extend `ChromeBaseEvent`.
+ * @interface
+ * @extends {ChromeBaseEventNoListeners}
  */
 chrome.mdns.ServiceListEvent = function() {};
 
 
 /**
- * @param {function(!Array.<!chrome.mdns.MdnsService>): void} callback
+ * @param {function(!Array<!chrome.mdns.MdnsService>): void} callback
  * @param {!Object=} opt_filter
+ * @return {undefined}
  */
 chrome.mdns.ServiceListEvent.prototype.addListener =
     function(callback, opt_filter) {};
 
 
-/** @param {function(!Array.<!chrome.mdns.MdnsService>): void} callback */
+/**
+ * @param {function(!Array<!chrome.mdns.MdnsService>): void} callback
+ * @return {undefined}
+ */
 chrome.mdns.ServiceListEvent.prototype.removeListener = function(callback) {};
 
 
 /**
- * @param {function(!Array.<!chrome.mdns.MdnsService>): void} callback
+ * @param {function(!Array<!chrome.mdns.MdnsService>): void} callback
  * @return {boolean}
  */
 chrome.mdns.ServiceListEvent.prototype.hasListener = function(callback) {};
@@ -9003,6 +9319,13 @@ chrome.mdns.ServiceListEvent.prototype.hasListeners = function() {};
 
 /** @type {!chrome.mdns.ServiceListEvent} */
 chrome.mdns.onServiceList;
+
+
+/**
+ * @param {function()} callback
+ * @return {undefined}
+ */
+chrome.mdns.forceDiscovery = function(callback) {};
 
 
 /**
@@ -9035,7 +9358,8 @@ chrome.gcdPrivate.Device;
 /**
  * Returns the list of cloud devices visible locally or available in the
  * cloud for user account.
- * @param {function(!Array.<!chrome.gcdPrivate.Device>): void} callback
+ * @param {function(!Array<!chrome.gcdPrivate.Device>): void} callback
+ * @return {undefined}
  */
 chrome.gcdPrivate.getCloudDeviceList = function(callback) {};
 
@@ -9044,6 +9368,7 @@ chrome.gcdPrivate.getCloudDeviceList = function(callback) {};
  * Queries network for local devices. Triggers onDeviceStateChanged and
  * onDeviceRemoved events. Call this function *only* after registering for
  * onDeviceStateChanged and onDeviceRemoved events, or it will do nothing.
+ * @return {undefined}
  */
 chrome.gcdPrivate.queryForNewLocalDevices = function() {};
 
@@ -9055,6 +9380,7 @@ chrome.gcdPrivate.queryForNewLocalDevices = function() {};
  * with true if wifi password was cached and false if it was unavailable.
  * @param {string} ssid
  * @param {function(boolean): void} callback
+ * @return {undefined}
  */
 chrome.gcdPrivate.prefetchWifiPassword = function(ssid, callback) {};
 
@@ -9067,6 +9393,7 @@ chrome.gcdPrivate.prefetchWifiPassword = function(ssid, callback) {};
  *     |status|: The status of the operation (success or type of error).
  *     |deviceInfo|: Content of /privet/info response.
  *     https://developers.google.com/cloud-devices/v1/reference/local-api/info
+ * @return {undefined}
  */
 chrome.gcdPrivate.getDeviceInfo = function(serviceName, callback) {};
 
@@ -9074,11 +9401,12 @@ chrome.gcdPrivate.getDeviceInfo = function(serviceName, callback) {};
 /**
  * Create new pairing session.
  * @param {string} serviceName The mDNS service name of the device.
- * @param {function(number, string, !Array.<string>): void}
+ * @param {function(number, string, !Array<string>): void}
  *     callback Called when the session is established or on error. 1st param,
  *     |sessionId|, is the session ID (identifies the session for future calls).
  *     2nd param, |status|, is the status (success or type of error). 3rd param,
  *     |pairingTypes|, is a list of pairing types supported by this device.
+ * @return {undefined}
  */
 chrome.gcdPrivate.createSession = function(serviceName, callback) {};
 
@@ -9088,6 +9416,7 @@ chrome.gcdPrivate.createSession = function(serviceName, callback) {};
  * @param {number} sessionId
  * @param {string} pairingType
  * @param {function(string): void} callback
+ * @return {undefined}
  */
 chrome.gcdPrivate.startPairing = function(sessionId, pairingType, callback) {};
 
@@ -9097,6 +9426,7 @@ chrome.gcdPrivate.startPairing = function(sessionId, pairingType, callback) {};
  * @param {number} sessionId
  * @param {string} code
  * @param {function(string): void} callback
+ * @return {undefined}
  */
 chrome.gcdPrivate.confirmCode = function(sessionId, code, callback) {};
 
@@ -9111,6 +9441,7 @@ chrome.gcdPrivate.confirmCode = function(sessionId, code, callback) {};
  * @param {!Object} input The input message to be sent over the encrypted
  *     channel.
  * @param {function(string, ?Object): void} callback
+ * @return {undefined}
  */
 chrome.gcdPrivate.sendMessage = function(sessionId, api, input, callback) {};
 
@@ -9118,6 +9449,7 @@ chrome.gcdPrivate.sendMessage = function(sessionId, api, input, callback) {};
 /**
  * Terminate the session with the device.
  * @param {number} sessionId
+ * @return {undefined}
  */
 chrome.gcdPrivate.terminateSession = function(sessionId) {};
 
@@ -9126,6 +9458,7 @@ chrome.gcdPrivate.terminateSession = function(sessionId) {};
  * Returns command definitions.
  * @param {string} deviceId The device to get command definitions for.
  * @param {function(!Object): void} callback The result callback.
+ * @return {undefined}
  */
 chrome.gcdPrivate.getCommandDefinitions = function(deviceId, callback) {};
 
@@ -9140,6 +9473,7 @@ chrome.gcdPrivate.getCommandDefinitions = function(deviceId, callback) {};
  * @param {!Object} command Described at
  *     https://developers.google.com/cloud-devices/v1/reference/commands.
  * @param {function(!Object): void} callback  The result callback.
+ * @return {undefined}
  */
 chrome.gcdPrivate.insertCommand = function(
     deviceId, expireInMs, command, callback) {};
@@ -9149,6 +9483,7 @@ chrome.gcdPrivate.insertCommand = function(
  * Returns a particular command.
  * @param {string} commandId Unique command ID.
  * @param {function(!Object): void} callback  The result callback.
+ * @return {undefined}
  */
 chrome.gcdPrivate.getCommand = function(commandId, callback) {};
 
@@ -9157,6 +9492,7 @@ chrome.gcdPrivate.getCommand = function(commandId, callback) {};
  * Cancels a command.
  * @param {string} commandId Unique command ID.
  * @param {function(!Object): void} callback  The result callback.
+ * @return {undefined}
  */
 chrome.gcdPrivate.cancelCommand = function(commandId, callback) {};
 
@@ -9167,7 +9503,8 @@ chrome.gcdPrivate.cancelCommand = function(commandId, callback) {};
  * @param {string} byUser List all the commands issued by the user. Special
  *     value 'me' can be used to list by the current user.
  * @param {string} state Command state.
- * @param {function(!Array.<!Object>): void} callback  The result callback.
+ * @param {function(!Array<!Object>): void} callback  The result callback.
+ * @return {undefined}
  */
 chrome.gcdPrivate.getCommandsList = function(
     deviceId, byUser, state, callback) {};
@@ -9176,28 +9513,10 @@ chrome.gcdPrivate.getCommandsList = function(
 
 /**
  * Event whose listeners take a chrome.gcdPrivate.Device.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.gcdPrivate.Device)>}
  */
 chrome.gcdPrivate.DeviceEvent = function() {};
-
-
-/** @param {function(!chrome.gcdPrivate.Device): void} callback */
-chrome.gcdPrivate.DeviceEvent.prototype.addListener = function(callback) {};
-
-
-/** @param {function(!chrome.gcdPrivate.Device): void} callback */
-chrome.gcdPrivate.DeviceEvent.prototype.removeListener = function(callback) {};
-
-
-/**
- * @param {function(!chrome.gcdPrivate.Device): void} callback
- * @return {boolean}
- */
-chrome.gcdPrivate.DeviceEvent.prototype.hasListener = function(callback) {};
-
-
-/** @return {boolean} */
-chrome.gcdPrivate.DeviceEvent.prototype.hasListeners = function() {};
 
 
 /**
@@ -9219,7 +9538,7 @@ chrome.gcdPrivate.onDeviceRemoved;
 
 /**
  * @const
- * @see http://goo.gl/bKHibo
+ * @see https://cs.chromium.org/chromium/src/extensions/common/api/bluetooth_private.idl
  */
 chrome.bluetoothPrivate = {};
 
@@ -9274,6 +9593,7 @@ chrome.bluetoothPrivate.SetPairingResponseOptions;
 /**
  * @param {!chrome.bluetoothPrivate.NewAdapterState} adapterState
  * @param {function()} callback
+ * @return {undefined}
  */
 chrome.bluetoothPrivate.setAdapterState = function(adapterState, callback) {};
 
@@ -9281,44 +9601,125 @@ chrome.bluetoothPrivate.setAdapterState = function(adapterState, callback) {};
 /**
  * @param {!chrome.bluetoothPrivate.SetPairingResponseOptions} options
  * @param {function()} callback
+ * @return {undefined}
  */
 chrome.bluetoothPrivate.setPairingResponse = function(options, callback) {};
 
 
+/**
+ * @param {string} deviceAddress
+ * @param {function():void=} callback
+ */
+chrome.bluetoothPrivate.disconnectAll = function(deviceAddress, callback) {};
+
+
+/**
+ * @param {string} deviceAddress
+ * @param {function():void=} callback
+ * @return {undefined}
+ */
+chrome.bluetoothPrivate.forgetDevice = function(deviceAddress, callback) {};
+
+
+/**
+ * @typedef {{
+ *   transport: (!chrome.bluetoothPrivate.TransportType|undefined),
+ *   uuids: ((string|!Array<string>)|undefined),
+ *   rssi: (number|undefined),
+ *   pathloss: (number|undefined)
+ * }}
+ */
+chrome.bluetoothPrivate.DiscoveryFilter;
+
+
+/**
+ * Set or clear discovery filter.
+ * @param {!chrome.bluetoothPrivate.DiscoveryFilter} discoveryFilter
+ * @param {function():void=} callback
+ */
+chrome.bluetoothPrivate.setDiscoveryFilter = function(discoveryFilter, callback) {};
+
 
 /**
  * Event whose listeners take a PairingEvent parameter.
- * @constructor
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.bluetoothPrivate.PairingEvent)>}
  */
 chrome.bluetoothPrivate.PairingEventEvent = function() {};
-
-
-/** @param {function(!chrome.bluetoothPrivate.PairingEvent): void} callback */
-chrome.bluetoothPrivate.PairingEventEvent.prototype.addListener =
-    function(callback) {};
-
-
-/** @param {function(!chrome.bluetoothPrivate.PairingEvent): void} callback */
-chrome.bluetoothPrivate.PairingEventEvent.prototype.removeListener =
-    function(callback) {};
-
-
-/**
- * @param {function(!chrome.bluetoothPrivate.PairingEvent): void} callback
- * @return {boolean}
- */
-chrome.bluetoothPrivate.PairingEventEvent.prototype.hasListener =
-    function(callback) {};
-
-
-/** @return {boolean} */
-chrome.bluetoothPrivate.PairingEventEvent.prototype.hasListeners =
-    function() {};
 
 
 /** @type {!chrome.bluetoothPrivate.PairingEventEvent} */
 chrome.bluetoothPrivate.onPairing;
 
+
+/**
+ * @param {string} deviceAddress
+ * @param {function(number, string): void=} opt_callback
+ */
+chrome.bluetoothPrivate.pair = function(deviceAddress, opt_callback) {};
+
+
+/**
+ * @enum {string}
+ * @see https://developer.chrome.com/extensions/bluetoothPrivate#type-PairingResponse
+ */
+chrome.bluetoothPrivate.PairingResponse = {
+  CONFIRM: '',
+  REJECT: '',
+  CANCEL: '',
+};
+
+
+/**
+ * @enum {string}
+ * @see https://developer.chrome.com/extensions/bluetoothPrivate#type-PairingEventType
+ */
+chrome.bluetoothPrivate.PairingEventType = {
+  REQUEST_PINCODE: '',
+  DISPLAY_PINCODE: '',
+  REQUEST_PASSKEY: '',
+  DISPLAY_PASSKEY: '',
+  KEYS_ENTERED: '',
+  CONFIRM_PASSKEY: '',
+  REQUEST_AUTHORIZATION: '',
+  COMPLETE: '',
+};
+
+
+/**
+ * @enum {string}
+ * @see https://developer.chrome.com/extensions/bluetoothPrivate#type-ConnectResultType
+ */
+chrome.bluetoothPrivate.ConnectResultType = {
+  ALREADY_CONNECTED: '',
+  ATTRIBUTE_LENGTH_INVALID: '',
+  AUTH_CANCELED: '',
+  AUTH_FAILED: '',
+  AUTH_REJECTED: '',
+  AUTH_TIMEOUT: '',
+  CONNECTION_CONGESTED: '',
+  FAILED: '',
+  IN_PROGRESS: '',
+  INSUFFICIENT_ENCRYPTION: '',
+  OFFSET_INVALID: '',
+  READ_NOT_PERMITTED: '',
+  REQUEST_NOT_SUPPORTED: '',
+  SUCCESS: '',
+  UNKNOWN_ERROR: '',
+  UNSUPPORTED_DEVICE: '',
+  WRITE_NOT_PERMITTED: '',
+};
+
+
+/**
+ * @enum {string}
+ * @see https://developer.chrome.com/extensions/bluetoothPrivate#type-TransportType
+ */
+chrome.bluetoothPrivate.TransportType = {
+  LE: '',
+  BREDR: '',
+  DUAL: '',
+};
 
 
 /**
@@ -9334,5 +9735,546 @@ chrome.inlineInstallPrivate = {};
  * @param {function(string, string): void=} opt_callback Response callback that
  *     returns two string: (1) an error string (or empty string on success) and
  *     (2) an error code in case of error
+ * @return {undefined}
  */
 chrome.inlineInstallPrivate.install = function(id, opt_callback) {};
+
+
+/**
+ * @const
+ * @see https://goo.gl/7dvJFW
+ */
+chrome.wallpaper = {};
+
+
+/**
+ * @enum {string}
+ * @see https://goo.gl/7dvJFW#type-WallpaperLayout
+ */
+chrome.wallpaper.WallpaperLayout = {
+  STRETCH: '',
+  CENTER: '',
+  CENTER_CROPPED: '',
+};
+
+
+/**
+ * Sets wallpaper to the image at url or wallpaperData with the specified
+ * layout.
+ * @param {{
+ *    data: (ArrayBuffer|undefined),
+ *    url: (string|undefined),
+ *    layout: (chrome.wallpaper.WallpaperLayout|string),
+ *    filename: string,
+ *    thumbnail: (boolean|undefined)
+ *  }} details
+ * @param {function(ArrayBuffer=)} callback
+ * @return {undefined}
+ * @see https://goo.gl/7dvJFW#method-setWallpaper
+ */
+chrome.wallpaper.setWallpaper = function(details, callback) {};
+
+
+/**
+ * @const
+ * @see https://developer.chrome.com/extensions/downloads
+ */
+chrome.downloads = {};
+
+
+/**
+ * @enum {string}
+ * @see https://developer.chrome.com/extensions/downloads#type-FilenameConflictAction
+ */
+chrome.downloads.FilenameConflictAction = {
+  UNIQUIFY: '',
+  OVERWRITE: '',
+  PROMPT: ''
+};
+
+
+/**
+ * @enum {string}
+ * @see https://developer.chrome.com/extensions/downloads#type-InterruptReason
+ */
+chrome.downloads.InterruptReason = {
+  FILE_FAILED: '',
+  FILE_ACCESS_DENIED: '',
+  FILE_NO_SPACE: '',
+  FILE_NAME_TOO_LONG: '',
+  FILE_TOO_LARGE: '',
+  FILE_VIRUS_INFECTED: '',
+  FILE_TRANSIENT_ERROR: '',
+  FILE_BLOCKED: '',
+  FILE_SECURITY_CHECK_FAILED: '',
+  FILE_TOO_SHORT: '',
+  FILE_HASH_MISMATCH: '',
+  NETWORK_FAILED: '',
+  NETWORK_TIMEOUT: '',
+  NETWORK_DISCONNECTED: '',
+  NETWORK_SERVER_DOWN: '',
+  NETWORK_INVALID_REQUEST: '',
+  SERVER_FAILED: '',
+  SERVER_NO_RANGE: '',
+  SERVER_BAD_CONTENT: '',
+  SERVER_UNAUTHORIZED: '',
+  SERVER_CERT_PROBLEM: '',
+  SERVER_FORBIDDEN: '',
+  SERVER_UNREACHABLE: '',
+  USER_CANCELED: '',
+  USER_SHUTDOWN: '',
+  CRASH: '',
+};
+
+
+/**
+ * @enum {string}
+ * @see https://developer.chrome.com/extensions/downloads#type-DangerType
+ */
+chrome.downloads.DangerType = {
+  FILE: '',
+  URL: '',
+  CONTENT: '',
+  UNCOMMON: '',
+  HOST: '',
+  UNWANTED: '',
+  SAFE: '',
+  ACCEPTED: ''
+};
+
+
+/**
+ * @enum {string}
+ * @see https://developer.chrome.com/extensions/downloads#type-State
+ */
+chrome.downloads.State = {
+  IN_PROGRESS: '',
+  INTERRUPTED: '',
+  COMPLETE: '',
+};
+
+
+/**
+ * @constructor
+ * @see https://developer.chrome.com/extensions/downloads#type-DownloadItem
+ */
+chrome.downloads.DownloadItem = function() {};
+
+
+/** @type {number} */
+chrome.downloads.DownloadItem.prototype.id;
+
+
+/** @type {string} */
+chrome.downloads.DownloadItem.prototype.url;
+
+
+/** @type {string} */
+chrome.downloads.DownloadItem.prototype.finalUrl;
+
+
+/** @type {string} */
+chrome.downloads.DownloadItem.prototype.referrer;
+
+
+/** @type {string} */
+chrome.downloads.DownloadItem.prototype.filename;
+
+
+/** @type {boolean} */
+chrome.downloads.DownloadItem.prototype.incognito;
+
+
+/** @type {!chrome.downloads.DangerType|string} */
+chrome.downloads.DownloadItem.prototype.danger;
+
+
+/** @type {string} */
+chrome.downloads.DownloadItem.prototype.mime;
+
+
+/** @type {string} */
+chrome.downloads.DownloadItem.prototype.startTime;
+
+
+/** @type {?string} */
+chrome.downloads.DownloadItem.prototype.endTime;
+
+
+/** @type {?string} */
+chrome.downloads.DownloadItem.prototype.estimatedEndTime;
+
+
+/** @type {!chrome.downloads.State|string} */
+chrome.downloads.DownloadItem.prototype.state;
+
+
+/** @type {boolean} */
+chrome.downloads.DownloadItem.prototype.paused;
+
+
+/** @type {boolean} */
+chrome.downloads.DownloadItem.prototype.canResume;
+
+
+/** @type {!chrome.downloads.InterruptReason|string|undefined} */
+chrome.downloads.DownloadItem.prototype.error;
+
+
+/** @type {number} */
+chrome.downloads.DownloadItem.prototype.bytesReceived;
+
+
+/** @type {number} */
+chrome.downloads.DownloadItem.prototype.totalBytes;
+
+
+/** @type {number} */
+chrome.downloads.DownloadItem.prototype.fileSize;
+
+
+/** @type {boolean} */
+chrome.downloads.DownloadItem.prototype.exists;
+
+
+/** @type {?string} */
+chrome.downloads.DownloadItem.prototype.byExtensionId;
+
+
+/** @type {?string} */
+chrome.downloads.DownloadItem.prototype.byExtensionName;
+
+
+/**
+ * @constructor
+ * @see https://developer.chrome.com/extensions/downloads#type-StringDelta
+ */
+chrome.downloads.StringDelta = function() {};
+
+
+/** @type {?string} */
+chrome.downloads.StringDelta.prototype.previous;
+
+
+/** @type {?string} */
+chrome.downloads.StringDelta.prototype.current;
+
+
+/**
+ * @constructor
+ * @see https://developer.chrome.com/extensions/downloads#type-DoubleDelta
+ */
+chrome.downloads.DoubleDelta = function() {};
+
+
+/** @type {?number} */
+chrome.downloads.DoubleDelta.prototype.previous;
+
+
+/** @type {?number} */
+chrome.downloads.DoubleDelta.prototype.current;
+
+
+/**
+ * @constructor
+ * @see https://developer.chrome.com/extensions/downloads#type-BooleanDelta
+ */
+chrome.downloads.BooleanDelta = function() {};
+
+
+/** @type {?boolean} */
+chrome.downloads.BooleanDelta.prototype.previous;
+
+
+/** @type {?boolean} */
+chrome.downloads.BooleanDelta.prototype.current;
+
+
+/**
+ * @param {{
+ *    url: string,
+ *    filename: (string|undefined),
+ *    conflictAction:
+ *        (!chrome.downloads.FilenameConflictAction|string|undefined),
+ *    saveAs: (boolean|undefined),
+ *    method: (string|undefined),
+ *    headers: (!Array<{name:string, value:string}>|undefined),
+ *    body: (string|undefined)
+ *  }} details
+ * @param {function(number)=} opt_callback
+ * @see https://developer.chrome.com/extensions/downloads#method-download
+ */
+chrome.downloads.download = function(details, opt_callback) {};
+
+
+/**
+ * @typedef {?{
+ *    query: (!Array<string>|undefined),
+ *    startedBefore: (string|undefined),
+ *    startedAfter: (string|undefined),
+ *    endedBefore: (string|undefined),
+ *    endedAfter: (string|undefined),
+ *    totalBytesGreater: (number|undefined),
+ *    totalBytesLess: (number|undefined),
+ *    filenameRegex: (string|undefined),
+ *    urlRegex: (string|undefined),
+ *    finalUrlRegex: (string|undefined),
+ *    limit: (number|undefined),
+ *    orderedBy: (!Array<string>|undefined),
+ *    id: (number|undefined),
+ *    url: (string|undefined),
+ *    finalUrl: (string|undefined),
+ *    filename: (string|undefined),
+ *    danger: (!chrome.downloads.DangerType|string|undefined),
+ *    mime: (string|undefined),
+ *    startTime: (string|undefined),
+ *    endTime: (string|undefined),
+ *    state: (!chrome.downloads.State|string|undefined),
+ *    paused: (boolean|undefined),
+ *    error: (!chrome.downloads.InterruptReason|string|undefined),
+ *    bytesReceived: (number|undefined),
+ *    totalBytes: (number|undefined),
+ *    fileSize: (number|undefined),
+ *    exists: (boolean|undefined)
+ *  }}
+ */
+chrome.downloads.Query;
+
+
+/**
+ * @param {!chrome.downloads.Query} query
+ * @param {function(!Array<!chrome.downloads.DownloadItem>)} callback
+ * @see https://developer.chrome.com/extensions/downloads#method-search
+ */
+chrome.downloads.search = function(query, callback) {};
+
+
+/**
+ * @param {number} id
+ * @param {function()=} opt_callback
+ *
+ * @see https://developer.chrome.com/extensions/downloads#method-pause
+ */
+chrome.downloads.pause = function(id, opt_callback) {};
+
+
+/**
+ * @param {string} id
+ * @param {function()=} opt_callback
+ *
+ * @see https://developer.chrome.com/extensions/downloads#method-resume
+ */
+chrome.downloads.resume = function(id, opt_callback) {};
+
+
+/**
+ * @param {number} id
+ * @param {function()=} opt_callback
+ *
+ * @see https://developer.chrome.com/extensions/downloads#method-cancel
+ */
+chrome.downloads.cancel = function(id, opt_callback) {};
+
+
+/**
+ * @param {number} id
+ * @param {{size:(number|undefined)}|function(string)} optionsOrCallback
+ * @param {function(string)=} opt_callback
+ *
+ * @see https://developer.chrome.com/extensions/downloads#method-getFileIcon
+ */
+chrome.downloads.getFileIcon = function(id, optionsOrCallback, opt_callback) {};
+
+
+/**
+ * @param {number} id
+ * @see https://developer.chrome.com/extensions/downloads#method-open
+ */
+chrome.downloads.open = function(id) {};
+
+
+/**
+ * @param {number} id
+ * @see https://developer.chrome.com/extensions/downloads#method-show
+ */
+chrome.downloads.show = function(id) {};
+
+
+/** @see https://developer.chrome.com/extensions/downloads#method-showDefaultFolder */
+chrome.downloads.showDefaultFolder = function() {};
+
+
+/**
+ * @param {!chrome.downloads.Query} query
+ * @param {function(!Array<number>)} callback
+ * @see https://developer.chrome.com/extensions/downloads#method-erase
+ */
+chrome.downloads.erase = function(query, callback) {};
+
+
+/**
+ * @param {number} id
+ * @param {function()=} opt_callback
+ *
+ * @see https://developer.chrome.com/extensions/downloads#method-removeFile
+ */
+chrome.downloads.removeFile = function(id, opt_callback) {};
+
+
+/**
+ * @param {number} id
+ * @param {function()=} opt_callback
+ *
+ * @see https://developer.chrome.com/extensions/downloads#method-acceptDanger
+ */
+chrome.downloads.acceptDanger = function(id, opt_callback) {};
+
+
+/**
+ * @param {number} id
+ *
+ * @see https://developer.chrome.com/extensions/downloads#method-drag
+ */
+chrome.downloads.drag = function(id) {};
+
+
+/**
+ * @param {boolean} enabled
+ *
+ * @see https://developer.chrome.com/extensions/downloads#method-setShelfEnabled
+ */
+chrome.downloads.setShelfEnabled = function(enabled) {};
+
+
+/**
+ * @interface
+ * @extends {ChromeBaseEvent<function(!chrome.downloads.DownloadItem)>}
+ * @see https://developer.chrome.com/extensions/downloads#event-onCreated
+ */
+chrome.downloads.CreatedEvent = function() {};
+
+
+/**
+ * @type {!chrome.downloads.CreatedEvent}
+ * https://developer.chrome.com/extensions/downloads#event-onCreated
+ */
+chrome.downloads.onCreated;
+
+
+/**
+ * @type {!ChromeNumberEvent}
+ * https://developer.chrome.com/extensions/downloads#event-onErased
+ */
+chrome.downloads.onErased;
+
+
+/**
+ * @type {!ChromeObjectEvent}
+ * https://developer.chrome.com/extensions/downloads#event-onChanged
+ */
+chrome.downloads.onChanged;
+
+
+/**
+ * @typedef {?{
+ *  filename: string,
+ *  conflictAction: (!chrome.downloads.FilenameConflictAction|undefined)
+ * }}
+ * @see https://developer.chrome.com/extensions/downloads#event-onDeterminingFilename
+ */
+chrome.downloads.FilenameSuggestion;
+
+
+/**
+ * @interface
+ * @extends {ChromeBaseEvent<
+ *     function(
+ *         !chrome.downloads.DownloadItem,
+ *         function(!chrome.downloads.FilenameSuggestion=))>}
+ * @see https://developer.chrome.com/extensions/downloads#event-onDeterminingFilename
+ */
+chrome.downloads.DeterminingFilenameEvent = function() {};
+
+
+/**
+ * @type {!chrome.downloads.DeterminingFilenameEvent}
+ * https://developer.chrome.com/extensions/downloads#event-onDeterminingFilename
+ */
+chrome.downloads.onDeterminingFilename;
+
+
+/**
+ * @const
+ * @see https://developer.chrome.com/extensions/declarativeContent
+ */
+chrome.declarativeContent = {};
+
+
+/**
+ * @typedef {!{
+ *   pageUrl: (!UrlFilter|undefined),
+ *   css: (!Array<string>|undefined),
+ *   isBookmarked: (boolean|undefined)
+ * }}
+ * @see https://developer.chrome.com/extensions/declarativeContent#type-PageStateMatcher
+ */
+chrome.declarativeContent.PageStateMatcherLiteral;
+
+
+/**
+ * @constructor
+ * @param {!chrome.declarativeContent.PageStateMatcherLiteral=} literalValue
+ * @see https://developer.chrome.com/extensions/declarativeContent#type-PageStateMatcher
+ */
+chrome.declarativeContent.PageStateMatcher = function(literalValue) {};
+
+
+/**
+ * @constructor
+ * @see https://developer.chrome.com/extensions/declarativeContent#type-ShowPageAction
+ */
+chrome.declarativeContent.ShowPageAction = function() {};
+
+
+/**
+ * @typedef {!{
+ *   imageData: (!ImageData|!Object<number, !ImageData>|undefined)
+ * }}
+ * @see https://developer.chrome.com/extensions/declarativeContent#type-SetIcon
+ */
+chrome.declarativeContent.SetIconLiteral;
+
+
+/**
+ * @constructor
+ * @param {!chrome.declarativeContent.SetIconLiteral} literalValue
+ * @see https://developer.chrome.com/extensions/declarativeContent#type-SetIcon
+ */
+chrome.declarativeContent.SetIcon = function(literalValue) {};
+
+
+/**
+ * @typedef {!{
+ *   css: (!Array<string>|undefined),
+ *   js: (!Array<string>|undefined),
+ *   allFrames: (boolean|undefined),
+ *   matchAboutBlank: (boolean|undefined)
+ * }}
+ * @see https://developer.chrome.com/extensions/declarativeContent#type-RequestContentScript
+ */
+chrome.declarativeContent.RequestContentScriptLiteral;
+
+
+/**
+ * @constructor
+ * @param {!chrome.declarativeContent.RequestContentScriptLiteral=} literalValue
+ * @see https://developer.chrome.com/extensions/declarativeContent#type-RequestContentScript
+ */
+chrome.declarativeContent.RequestContentScript = function(literalValue) {};
+
+
+/**
+ * @type {!ChromeVoidEvent}
+ * @see https://developer.chrome.com/extensions/declarativeContent#event-onPageChanged
+ */
+chrome.declarativeContent.onPageChanged;

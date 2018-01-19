@@ -20,11 +20,8 @@ import com.google.javascript.jscomp.CodingConvention.SubclassRelationship;
 import com.google.javascript.jscomp.NodeTraversal.AbstractPostOrderCallback;
 import com.google.javascript.rhino.IR;
 import com.google.javascript.rhino.Node;
-import com.google.javascript.rhino.Token;
-
 import java.util.HashSet;
 import java.util.Set;
-
 import javax.annotation.Nullable;
 
 /**
@@ -97,7 +94,7 @@ class StripCode implements CompilerPass {
       stripTypePrefixes.add(type + ".");
     }
 
-    NodeTraversal.traverse(compiler, root, new Strip());
+    NodeTraversal.traverseEs6(compiler, root, new Strip());
   }
 
   // -------------------------------------------------------------------------
@@ -109,41 +106,43 @@ class StripCode implements CompilerPass {
 
     @Override
     public void visit(NodeTraversal t, Node n, Node parent) {
-      switch (n.getType()) {
-        case Token.VAR:
+      switch (n.getToken()) {
+        case VAR:
           removeVarDeclarationsByNameOrRvalue(t, n, parent);
           break;
 
-        case Token.NAME:
+        case NAME:
           maybeRemoveReferenceToRemovedVariable(t, n, parent);
           break;
 
-        case Token.ASSIGN:
-        case Token.ASSIGN_BITOR:
-        case Token.ASSIGN_BITXOR:
-        case Token.ASSIGN_BITAND:
-        case Token.ASSIGN_LSH:
-        case Token.ASSIGN_RSH:
-        case Token.ASSIGN_URSH:
-        case Token.ASSIGN_ADD:
-        case Token.ASSIGN_SUB:
-        case Token.ASSIGN_MUL:
-        case Token.ASSIGN_DIV:
-        case Token.ASSIGN_MOD:
+        case ASSIGN:
+        case ASSIGN_BITOR:
+        case ASSIGN_BITXOR:
+        case ASSIGN_BITAND:
+        case ASSIGN_LSH:
+        case ASSIGN_RSH:
+        case ASSIGN_URSH:
+        case ASSIGN_ADD:
+        case ASSIGN_SUB:
+        case ASSIGN_MUL:
+        case ASSIGN_DIV:
+        case ASSIGN_MOD:
           maybeEliminateAssignmentByLvalueName(t, n, parent);
           break;
 
-        case Token.CALL:
-        case Token.NEW:
+        case CALL:
+        case NEW:
           maybeRemoveCall(t, n, parent);
           break;
 
-        case Token.OBJECTLIT:
+        case OBJECTLIT:
           eliminateKeysWithStripNamesFromObjLit(t, n);
           break;
 
-        case Token.EXPR_RESULT:
+        case EXPR_RESULT:
           maybeEliminateExpressionByName(t, n, parent);
+          break;
+        default:
           break;
       }
     }
@@ -159,22 +158,24 @@ class StripCode implements CompilerPass {
      */
     void removeVarDeclarationsByNameOrRvalue(NodeTraversal t, Node n,
         Node parent) {
+      Node next = null;
       for (Node nameNode = n.getFirstChild(); nameNode != null;
-          nameNode = nameNode.getNext()) {
+          nameNode = next) {
+        next = nameNode.getNext();
         String name = nameNode.getString();
-        if (isStripName(name) ||
-            isCallWhoseReturnValueShouldBeStripped(nameNode.getFirstChild())) {
+        if (isStripName(name)
+            || isCallWhoseReturnValueShouldBeStripped(nameNode.getFirstChild())) {
           // Remove the NAME.
           Scope scope = t.getScope();
           varsToRemove.add(scope.getVar(name));
           n.removeChild(nameNode);
-          compiler.reportCodeChange();
+          NodeUtil.markFunctionsDeleted(nameNode, compiler);
         }
       }
       if (!n.hasChildren()) {
         // Must also remove the VAR.
         replaceWithEmpty(n, parent);
-        compiler.reportCodeChange();
+        t.reportCodeChange();
       }
     }
 
@@ -187,55 +188,55 @@ class StripCode implements CompilerPass {
      */
     void maybeRemoveReferenceToRemovedVariable(NodeTraversal t, Node n,
                                                Node parent) {
-      switch (parent.getType()) {
-        case Token.VAR:
+      switch (parent.getToken()) {
+        case VAR:
           // This is a variable declaration, not a reference.
           break;
 
-        case Token.GETPROP:
+        case GETPROP:
           // GETPROP
           //   NAME
           //   STRING (property name)
-        case Token.GETELEM:
+        case GETELEM:
           // GETELEM
           //   NAME
           //   NUMBER|STRING|NAME|...
           if (parent.getFirstChild() == n && isReferenceToRemovedVar(t, n)) {
-            replaceHighestNestedCallWithNull(parent, parent.getParent());
+            replaceHighestNestedCallWithNull(t, parent, parent.getParent());
           }
           break;
 
-        case Token.ASSIGN:
-        case Token.ASSIGN_BITOR:
-        case Token.ASSIGN_BITXOR:
-        case Token.ASSIGN_BITAND:
-        case Token.ASSIGN_LSH:
-        case Token.ASSIGN_RSH:
-        case Token.ASSIGN_URSH:
-        case Token.ASSIGN_ADD:
-        case Token.ASSIGN_SUB:
-        case Token.ASSIGN_MUL:
-        case Token.ASSIGN_DIV:
-        case Token.ASSIGN_MOD:
+        case ASSIGN:
+        case ASSIGN_BITOR:
+        case ASSIGN_BITXOR:
+        case ASSIGN_BITAND:
+        case ASSIGN_LSH:
+        case ASSIGN_RSH:
+        case ASSIGN_URSH:
+        case ASSIGN_ADD:
+        case ASSIGN_SUB:
+        case ASSIGN_MUL:
+        case ASSIGN_DIV:
+        case ASSIGN_MOD:
           if (isReferenceToRemovedVar(t, n)) {
             if (parent.getFirstChild() == n) {
-              Node gramps = parent.getParent();
-              if (gramps.isExprResult()) {
+              Node grandparent = parent.getParent();
+              if (grandparent.isExprResult()) {
                 // Remove the assignment.
-                Node greatGramps = gramps.getParent();
-                replaceWithEmpty(gramps, greatGramps);
-                compiler.reportCodeChange();
+                Node greatGrandparent = grandparent.getParent();
+                replaceWithEmpty(grandparent, greatGrandparent);
+                t.reportCodeChange();
               } else {
                 // Substitute the r-value for the assignment.
                 Node rvalue = n.getNext();
                 parent.removeChild(rvalue);
-                gramps.replaceChild(parent, rvalue);
-                compiler.reportCodeChange();
+                grandparent.replaceChild(parent, rvalue);
+                t.reportCodeChange();
               }
             } else {
               // The var reference is the r-value. Replace it with null.
               replaceWithNull(n, parent);
-              compiler.reportCodeChange();
+              t.reportCodeChange();
             }
           }
           break;
@@ -243,7 +244,7 @@ class StripCode implements CompilerPass {
         default:
           if (isReferenceToRemovedVar(t, n)) {
             replaceWithNull(n, parent);
-            compiler.reportCodeChange();
+            t.reportCodeChange();
           }
           break;
       }
@@ -255,24 +256,24 @@ class StripCode implements CompilerPass {
      * in a.b().c().d(), we'll have to remove all of the calls, and it
      * will take a few iterations through this loop to get up to d().
      */
-    void replaceHighestNestedCallWithNull(Node node, Node parent) {
+    void replaceHighestNestedCallWithNull(NodeTraversal t, Node node, Node parent) {
       Node ancestor = parent;
       Node ancestorChild = node;
+      Node ancestorParent;
       while (true) {
+        ancestorParent = ancestor.getParent();
+
         if (ancestor.getFirstChild() != ancestorChild) {
           replaceWithNull(ancestorChild, ancestor);
           break;
         }
         if (ancestor.isExprResult()) {
           // Remove the entire expression statement.
-          Node ancParent = ancestor.getParent();
-          replaceWithEmpty(ancestor, ancParent);
+          replaceWithEmpty(ancestor, ancestorParent);
           break;
         }
         if (ancestor.isAssign()) {
-          Node ancParent = ancestor.getParent();
-          ancParent.replaceChild(
-              ancestor, ancestor.getLastChild().detachFromParent());
+          ancestorParent.replaceChild(ancestor, ancestor.getLastChild().detach());
           break;
         }
         if (!NodeUtil.isGet(ancestor)
@@ -280,10 +281,12 @@ class StripCode implements CompilerPass {
           replaceWithNull(ancestorChild, ancestor);
           break;
         }
+
+        // Is not executed on the last iteration so can't be used for change reporting.
         ancestorChild = ancestor;
-        ancestor = ancestor.getParent();
+        ancestor = ancestorParent;
       }
-      compiler.reportCodeChange();
+      t.reportCodeChange();
     }
 
     /**
@@ -308,9 +311,9 @@ class StripCode implements CompilerPass {
         // safe to eliminate assignment in complex expressions,
         // e.g. in ((x = 7) + 8)
         if (parent.isExprResult()) {
-          Node gramps = parent.getParent();
-          replaceWithEmpty(parent, gramps);
-          compiler.reportCodeChange();
+          Node grandparent = parent.getParent();
+          replaceWithEmpty(parent, grandparent);
+          compiler.reportChangeToEnclosingScope(grandparent);
         } else {
           t.report(n, STRIP_ASSIGNMENT_ERROR, lvalue.getQualifiedName());
         }
@@ -337,12 +340,13 @@ class StripCode implements CompilerPass {
       if (nameIncludesFieldNameToStrip(expression) ||
           qualifiedNameBeginsWithStripType(expression)) {
         if (parent.isExprResult()) {
-          Node gramps = parent.getParent();
-          replaceWithEmpty(parent, gramps);
+          Node grandparent = parent.getParent();
+          replaceWithEmpty(parent, grandparent);
+          compiler.reportChangeToEnclosingScope(grandparent);
         } else {
           replaceWithEmpty(n, parent);
+          compiler.reportChangeToEnclosingScope(parent);
         }
-        compiler.reportCodeChange();
       }
     }
 
@@ -359,7 +363,7 @@ class StripCode implements CompilerPass {
       //   function
       //   arguments
       if (isMethodOrCtorCallThatTriggersRemoval(t, n, parent)) {
-        replaceHighestNestedCallWithNull(n, parent);
+        replaceHighestNestedCallWithNull(t, n, parent);
       }
     }
 
@@ -381,8 +385,9 @@ class StripCode implements CompilerPass {
         if (isStripName(key.getString())) {
           Node next = key.getNext();
           n.removeChild(key);
+          NodeUtil.markFunctionsDeleted(key, compiler);
           key = next;
-          compiler.reportCodeChange();
+          compiler.reportChangeToEnclosingScope(n);
         } else {
           key = key.getNext();
         }
@@ -496,8 +501,8 @@ class StripCode implements CompilerPass {
       }
 
       if (parent != null && parent.isName()) {
-        Node gramps = parent.getParent();
-        if (gramps != null && gramps.isVar()) {
+        Node grandparent = parent.getParent();
+        if (grandparent != null && grandparent.isVar()) {
           // The call's return value is being used to initialize a newly
           // declared variable. We should leave the call intact for now.
           // That way, when the traversal reaches the variable declaration,
@@ -600,6 +605,7 @@ class StripCode implements CompilerPass {
      */
     void replaceWithNull(Node n, Node parent) {
       parent.replaceChild(n, IR.nullNode());
+      NodeUtil.markFunctionsDeleted(n, compiler);
     }
 
     /**
@@ -611,6 +617,7 @@ class StripCode implements CompilerPass {
      */
     void replaceWithEmpty(Node n, Node parent) {
       NodeUtil.removeChild(parent, n);
+      NodeUtil.markFunctionsDeleted(n, compiler);
     }
   }
 }

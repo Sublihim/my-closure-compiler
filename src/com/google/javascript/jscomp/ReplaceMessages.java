@@ -16,12 +16,13 @@
 
 package com.google.javascript.jscomp;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
+import com.google.common.annotations.GwtIncompatible;
 import com.google.javascript.rhino.IR;
 import com.google.javascript.rhino.Node;
 import com.google.javascript.rhino.Token;
-
 import java.util.Iterator;
-
 import javax.annotation.Nullable;
 
 /**
@@ -30,6 +31,7 @@ import javax.annotation.Nullable;
  *
  * @author anatol@google.com (Anatol Pomazau)
  */
+@GwtIncompatible("JsMessage")
 final class ReplaceMessages extends JsMessageVisitor {
   private final MessageBundle bundle;
   private final boolean strictReplacement;
@@ -41,7 +43,6 @@ final class ReplaceMessages extends JsMessageVisitor {
   ReplaceMessages(AbstractCompiler compiler, MessageBundle bundle,
       boolean checkDuplicatedMessages, JsMessage.Style style,
       boolean strictReplacement) {
-
     super(compiler, checkDuplicatedMessages, style, bundle.idGenerator());
 
     this.bundle = bundle;
@@ -57,9 +58,12 @@ final class ReplaceMessages extends JsMessageVisitor {
         (bundle.getMessage(message2.getId()) != null);
     Node replacementNode =
         isSecondMessageTranslated && !isFirstMessageTranslated ?
-        callNode.getChildAtIndex(2) : callNode.getChildAtIndex(1);
-    callNode.getParent().replaceChild(callNode,
-        replacementNode.detachFromParent());
+        callNode.getChildAtIndex(2) : callNode.getSecondChild();
+    callNode.replaceWith(replacementNode.detach());
+    Node changeScope = NodeUtil.getEnclosingChangeScopeRoot(replacementNode);
+    if (changeScope != null) {
+      compiler.reportChangeToChangeScope(changeScope);
+    }
   }
 
   @Override
@@ -94,9 +98,9 @@ final class ReplaceMessages extends JsMessageVisitor {
     }
 
     if (newValue != msgNode) {
-      newValue.copyInformationFromForTree(msgNode);
-      msgNode.getParent().replaceChild(msgNode, newValue);
-      compiler.reportCodeChange();
+      newValue.useSourceInfoIfMissingFromForTree(msgNode);
+      msgNode.replaceWith(newValue);
+      compiler.reportChangeToEnclosingScope(newValue);
     }
   }
 
@@ -114,29 +118,29 @@ final class ReplaceMessages extends JsMessageVisitor {
    */
   private Node getNewValueNode(JsMessage message, Node origValueNode)
       throws MalformedException {
-    switch (origValueNode.getType()) {
-      case Token.FUNCTION:
+    switch (origValueNode.getToken()) {
+      case FUNCTION:
         // The message is a function. Modify the function node.
         updateFunctionNode(message, origValueNode);
         return origValueNode;
-      case Token.STRING:
+      case STRING:
         // The message is a simple string. Modify the string node.
         String newString = message.toString();
         if (!origValueNode.getString().equals(newString)) {
           origValueNode.setString(newString);
-          compiler.reportCodeChange();
+          compiler.reportChangeToEnclosingScope(origValueNode);
         }
         return origValueNode;
-      case Token.ADD:
+      case ADD:
         // The message is a simple string. Create a string node.
         return IR.string(message.toString());
-      case Token.CALL:
+      case CALL:
         // The message is a function call. Replace it with a string expression.
         return replaceCallNode(message, origValueNode);
       default:
         throw new MalformedException(
-            "Expected FUNCTION, STRING, or ADD node; found: " +
-                origValueNode.getType(), origValueNode);
+            "Expected FUNCTION, STRING, or ADD node; found: " + origValueNode.getToken(),
+            origValueNode);
     }
   }
 
@@ -184,9 +188,9 @@ final class ReplaceMessages extends JsMessageVisitor {
     // TODO(user): checkTreeEqual is overkill. I am in process of rewriting
     // these functions.
     if (newBlockNode.checkTreeEquals(oldBlockNode) != null) {
-      newBlockNode.copyInformationFromForTree(oldBlockNode);
+      newBlockNode.useSourceInfoIfMissingFromForTree(oldBlockNode);
       functionNode.replaceChild(oldBlockNode, newBlockNode);
-      compiler.reportCodeChange();
+      compiler.reportChangeToEnclosingScope(newBlockNode);
     }
   }
 
@@ -197,7 +201,7 @@ final class ReplaceMessages extends JsMessageVisitor {
    * combine the other two types.
    *
    * @param partsIterator  an iterator over message parts
-   * @param argListNode  an LP node whose children are valid placeholder names
+   * @param argListNode  a PARAM_LIST node whose children are valid placeholder names
    * @return the root of the constructed parse tree
    *
    * @throws MalformedException if {@code partsIterator} contains a
@@ -294,7 +298,8 @@ final class ReplaceMessages extends JsMessageVisitor {
     Node objLitNode = stringExprNode.getNext();
 
     // Build the replacement tree.
-    return constructStringExprNode(message.parts().iterator(), objLitNode);
+    return constructStringExprNode(
+        message.parts().iterator(), objLitNode, callNode);
   }
 
   /**
@@ -310,8 +315,9 @@ final class ReplaceMessages extends JsMessageVisitor {
    * @throws MalformedException if {@code parts} contains a placeholder
    *   reference that does not correspond to a valid placeholder name
    */
-  private static Node constructStringExprNode(Iterator<CharSequence> parts,
-                                              Node objLitNode) throws MalformedException {
+  private static Node constructStringExprNode(
+      Iterator<CharSequence> parts, Node objLitNode, Node refNode) throws MalformedException {
+    checkNotNull(refNode);
 
     CharSequence part = parts.next();
     Node partNode = null;
@@ -322,7 +328,7 @@ final class ReplaceMessages extends JsMessageVisitor {
       // The translated message is null
       if (objLitNode == null) {
         throw new MalformedException("Empty placeholder value map " +
-            "for a translated message with placeholders.", objLitNode);
+            "for a translated message with placeholders.", refNode);
       }
 
       for (Node key = objLitNode.getFirstChild(); key != null;
@@ -345,7 +351,7 @@ final class ReplaceMessages extends JsMessageVisitor {
 
     if (parts.hasNext()) {
       return IR.add(partNode,
-          constructStringExprNode(parts, objLitNode));
+          constructStringExprNode(parts, objLitNode, refNode));
     } else {
       return partNode;
     }
@@ -361,17 +367,16 @@ final class ReplaceMessages extends JsMessageVisitor {
     if (node == null) {
       throw new IllegalArgumentException("Expected a string; found: null");
     }
-    switch (node.getType()) {
-      case Token.STRING:
+    switch (node.getToken()) {
+      case STRING:
         break;
-      case Token.ADD:
+      case ADD:
         Node c = node.getFirstChild();
         checkStringExprNode(c);
         checkStringExprNode(c.getNext());
         break;
       default:
-        throw new IllegalArgumentException(
-            "Expected a string; found: " + node.getType());
+        throw new IllegalArgumentException("Expected a string; found: " + node.getToken());
     }
   }
 }

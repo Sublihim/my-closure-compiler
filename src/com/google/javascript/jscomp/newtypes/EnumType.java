@@ -16,11 +16,15 @@
 
 package com.google.javascript.jscomp.newtypes;
 
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.javascript.rhino.JSTypeExpression;
-
+import com.google.javascript.rhino.Node;
 import java.util.Collection;
 
 /**
@@ -43,77 +47,70 @@ public final class EnumType extends Namespace implements TypeWithProperties {
 
   private State state;
   private JSTypeExpression typeExpr;
-  private String name;
   // The type that accompanies the enum declaration
   private JSType declaredType;
   // The type of the enum's properties, a subtype of the previous field.
   private JSType enumPropType;
-  // The type of the object literal that defines the enum
-  private JSType enumObjType;
   // All properties have the same type, so we only need a set, not a map.
-  private ImmutableSet<String> props;
+  private final ImmutableSet<String> props;
 
-  private EnumType(
-      String name, JSTypeExpression typeExpr, Collection<String> props) {
-    Preconditions.checkNotNull(typeExpr);
+  private EnumType(JSTypes commonTypes, String name, Node defSite,
+      JSTypeExpression typeExpr, Collection<String> props) {
+    super(commonTypes, name, defSite);
+    checkNotNull(typeExpr);
     this.state = State.NOT_RESOLVED;
-    this.name = name;
     // typeExpr is non-null iff the enum is not resolved
     this.typeExpr = typeExpr;
     this.props = ImmutableSet.copyOf(props);
   }
 
-  public static EnumType make(
-      String name, JSTypeExpression typeExpr, Collection<String> props) {
-    return new EnumType(name, typeExpr, props);
+  public static EnumType make(JSTypes commonTypes, String name, Node defSite,
+      JSTypeExpression typeExpr, Collection<String> props) {
+    return new EnumType(commonTypes, name, defSite, typeExpr, props);
   }
 
   public boolean isResolved() {
-    return state == State.RESOLVED;
+    return this.state == State.RESOLVED;
+  }
+
+  JSTypes getCommonTypes() {
+    return this.commonTypes;
   }
 
   public JSType getEnumeratedType() {
-    Preconditions.checkState(state == State.RESOLVED);
+    checkState(this.state == State.RESOLVED);
     return declaredType;
   }
 
   public JSType getPropType() {
-    Preconditions.checkState(state == State.RESOLVED);
+    checkState(this.state == State.RESOLVED);
     return enumPropType;
-  }
-
-  @Override
-  public JSType toJSType() {
-    Preconditions.checkState(state == State.RESOLVED);
-    if (enumObjType == null) {
-      enumObjType = computeObjType();
-    }
-    return enumObjType;
   }
 
   // Returns null iff there is a type cycle
   public JSTypeExpression getTypeExpr() {
-    Preconditions.checkState(state != State.RESOLVED);
-    if (state == State.DURING_RESOLUTION) {
+    checkState(this.state != State.RESOLVED);
+    if (this.state == State.DURING_RESOLUTION) {
       return null;
     }
-    state = State.DURING_RESOLUTION;
+    this.state = State.DURING_RESOLUTION;
     return typeExpr;
   }
 
   public JSTypeExpression getTypeExprForErrorReporting() {
-    Preconditions.checkState(state == State.DURING_RESOLUTION);
+    checkState(this.state == State.DURING_RESOLUTION);
     return typeExpr;
   }
 
   void resolveEnum(JSType t) {
-    Preconditions.checkNotNull(t);
-    if (state == State.RESOLVED) {
+    checkNotNull(t);
+    checkArgument(!t.isUnion());
+    if (this.state == State.RESOLVED) {
       return;
     }
-    Preconditions.checkState(state == State.DURING_RESOLUTION,
-        "Expected state DURING_RESOLUTION but found %s", state.toString());
-    state = State.RESOLVED;
+    Preconditions.checkState(this.state == State.DURING_RESOLUTION,
+        "Expected state DURING_RESOLUTION but found %s", this.state.toString());
+    this.state = State.RESOLVED;
     typeExpr = null;
     declaredType = t;
     enumPropType = JSType.fromEnum(this);
@@ -125,16 +122,18 @@ public final class EnumType extends Namespace implements TypeWithProperties {
    *   var X = { ONE: 1, TWO: 2 };
    * the properties of the object literal are constant.
    */
-  private JSType computeObjType() {
-    Preconditions.checkState(enumPropType != null);
-    PersistentMap<String, Property> propMap = otherProps;
-    for (String s : props) {
+  @Override
+  protected JSType computeJSType() {
+    checkNotNull(enumPropType);
+    checkState(this.namespaceType == null);
+    PersistentMap<String, Property> propMap = PersistentMap.create();
+    for (String s : this.props) {
       propMap = propMap.with(s,
           Property.makeConstant(null, enumPropType, enumPropType));
     }
-    return withNamedTypes(
-        ObjectType.makeObjectType(
-            null, propMap, null, false, ObjectKind.UNRESTRICTED));
+    return JSType.fromObjectType(ObjectType.makeObjectType(
+        this.commonTypes, this.commonTypes.getLiteralObjNominalType(), propMap,
+        null, this, false, ObjectKind.UNRESTRICTED));
   }
 
   @Override
@@ -168,6 +167,15 @@ public final class EnumType extends Namespace implements TypeWithProperties {
     return props.contains(name);
   }
 
+  static boolean hasScalar(ImmutableSet<EnumType> enums) {
+    for (EnumType e : enums) {
+      if (e.declaredType.hasScalar()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   static boolean hasNonScalar(ImmutableSet<EnumType> enums) {
     for (EnumType e : enums) {
       if (e.declaredType.hasNonScalar()) {
@@ -193,7 +201,7 @@ public final class EnumType extends Namespace implements TypeWithProperties {
       ImmutableSet<EnumType> newEnums, JSType joinWithoutEnums) {
     boolean recreateEnums = false;
     for (EnumType e : newEnums) {
-      if (e.declaredType.isSubtypeOf(joinWithoutEnums)) {
+      if (e.declaredType.isSubtypeOf(joinWithoutEnums, SubtypeCache.create())) {
         recreateEnums = true;
         break;
       }
@@ -203,14 +211,14 @@ public final class EnumType extends Namespace implements TypeWithProperties {
     }
     ImmutableSet.Builder<EnumType> builder = ImmutableSet.builder();
     for (EnumType e : newEnums) {
-      if (!e.declaredType.isSubtypeOf(joinWithoutEnums)) {
+      if (!e.declaredType.isSubtypeOf(joinWithoutEnums, SubtypeCache.create())) {
         builder.add(e);
       }
     }
     return builder.build();
   }
 
-  static boolean areSubtypes(JSType t1, JSType t2) {
+  static boolean areSubtypes(JSType t1, JSType t2, SubtypeCache subSuperMap) {
     ImmutableSet<EnumType> s1 = t1.getEnums();
     if (s1 == null) {
       return true;
@@ -220,7 +228,7 @@ public final class EnumType extends Namespace implements TypeWithProperties {
       if (s2 != null && s2.contains(e)) {
         continue;
       }
-      if (!e.declaredType.isSubtypeOf(t2)) {
+      if (!e.declaredType.isSubtypeOf(t2, subSuperMap)) {
         return false;
       }
     }
@@ -228,7 +236,7 @@ public final class EnumType extends Namespace implements TypeWithProperties {
   }
 
   @Override
-  public String toString() {
-    return name;
+  public Collection<JSType> getSubtypesWithProperty(QualifiedName qname) {
+    return declaredType.getSubtypesWithProperty(qname);
   }
 }

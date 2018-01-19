@@ -34,7 +34,20 @@ import com.google.javascript.jscomp.SourceMap;
 import com.google.javascript.jscomp.SourceMap.Format;
 import com.google.javascript.jscomp.SourceMap.LocationMapping;
 import com.google.javascript.jscomp.WarningLevel;
-
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.nio.charset.Charset;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.Project;
 import org.apache.tools.ant.Task;
@@ -44,21 +57,6 @@ import org.apache.tools.ant.types.Path;
 import org.apache.tools.ant.types.Resource;
 import org.apache.tools.ant.types.ResourceCollection;
 import org.apache.tools.ant.types.resources.FileResource;
-
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.nio.charset.Charset;
-import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.logging.Level;
 
 /**
  * This class implements a simple Ant task to do almost the same as
@@ -71,18 +69,21 @@ import java.util.logging.Level;
 public final class CompileTask
     extends Task {
   private CompilerOptions.LanguageMode languageIn;
+  private CompilerOptions.LanguageMode languageOut;
   private WarningLevel warningLevel;
   private boolean debugOptions;
   private String encoding = "UTF-8";
-  private String outputEncoding = "UTF-8";
+  private Charset outputEncoding = UTF_8;
   private CompilationLevel compilationLevel;
-  private boolean customExternsOnly;
+  private CompilerOptions.Environment environment;
   private boolean manageDependencies;
   private boolean prettyPrint;
   private boolean printInputDelimiter;
+  private boolean preferSingleQuotes;
   private boolean generateExports;
   private boolean replaceProperties;
   private boolean forceRecompile;
+  private boolean angularPass;
   private String replacePropertiesPrefix;
   private File outputFile;
   private String outputWrapper;
@@ -96,26 +97,52 @@ public final class CompileTask
   private String sourceMapFormat;
   private File sourceMapOutputFile;
   private String sourceMapLocationMapping;
+  private boolean applyInputSourceMaps;
 
   public CompileTask() {
-    this.languageIn = CompilerOptions.LanguageMode.ECMASCRIPT3;
+    this.languageIn = CompilerOptions.LanguageMode.ECMASCRIPT_2015;
+    this.languageOut = CompilerOptions.LanguageMode.ECMASCRIPT3;
     this.warningLevel = WarningLevel.DEFAULT;
     this.debugOptions = false;
     this.compilationLevel = CompilationLevel.SIMPLE_OPTIMIZATIONS;
-    this.customExternsOnly = false;
+    this.environment = CompilerOptions.Environment.BROWSER;
     this.manageDependencies = false;
     this.prettyPrint = false;
     this.printInputDelimiter = false;
+    this.preferSingleQuotes = false;
     this.generateExports = false;
     this.replaceProperties = false;
     this.forceRecompile = false;
+    this.angularPass = false;
     this.replacePropertiesPrefix = "closure.define.";
-    this.defineParams = new LinkedList();
-    this.entryPointParams = new LinkedList();
-    this.externFileLists = new LinkedList();
-    this.sourceFileLists = new LinkedList();
-    this.sourcePaths = new LinkedList();
-    this.warnings = new LinkedList();
+    this.defineParams = new ArrayList<>();
+    this.entryPointParams = new ArrayList<>();
+    this.externFileLists = new ArrayList<>();
+    this.sourceFileLists = new ArrayList<>();
+    this.sourcePaths = new ArrayList<>();
+    this.warnings = new ArrayList<>();
+  }
+
+  private static CompilerOptions.LanguageMode parseLanguageMode(String value) {
+    switch (value) {
+      case "ECMASCRIPT6_STRICT":
+      case "ES6_STRICT":
+      case "ECMASCRIPT6":
+      case "ES6":
+        return CompilerOptions.LanguageMode.ECMASCRIPT_2015;
+      case "ECMASCRIPT5_STRICT":
+      case "ES5_STRICT":
+        return CompilerOptions.LanguageMode.ECMASCRIPT5_STRICT;
+      case "ECMASCRIPT5":
+      case "ES5":
+        return CompilerOptions.LanguageMode.ECMASCRIPT5;
+      case "ECMASCRIPT3":
+      case "ES3":
+        return CompilerOptions.LanguageMode.ECMASCRIPT3;
+      default:
+        throw new BuildException(
+            "Unrecognized 'languageIn' option value (" + value + ")");
+    }
   }
 
   /**
@@ -124,31 +151,16 @@ public final class CompileTask
    *     (ECMASCRIPT3, ECMASCRIPT5, ECMASCRIPT5_STRICT).
    */
   public void setLanguageIn(String value) {
-    switch (value) {
-      case "ECMASCRIPT6_STRICT":
-      case "ES6_STRICT":
-        this.languageIn = CompilerOptions.LanguageMode.ECMASCRIPT6_STRICT;
-        break;
-      case "ECMASCRIPT6":
-      case "ES6":
-        this.languageIn = CompilerOptions.LanguageMode.ECMASCRIPT6;
-        break;
-      case "ECMASCRIPT5_STRICT":
-      case "ES5_STRICT":
-        this.languageIn = CompilerOptions.LanguageMode.ECMASCRIPT5_STRICT;
-        break;
-      case "ECMASCRIPT5":
-      case "ES5":
-        this.languageIn = CompilerOptions.LanguageMode.ECMASCRIPT5;
-        break;
-      case "ECMASCRIPT3":
-      case "ES3":
-        this.languageIn = CompilerOptions.LanguageMode.ECMASCRIPT3;
-        break;
-      default:
-        throw new BuildException(
-            "Unrecognized 'languageIn' option value (" + value + ")");
-    }
+    this.languageIn = parseLanguageMode(value);
+  }
+
+  /**
+   * Set the language to which output sources conform.
+   * @param value The name of the language.
+   *     (ECMASCRIPT3, ECMASCRIPT5, ECMASCRIPT5_STRICT).
+   */
+  public void setLanguageOut(String value) {
+    this.languageOut = parseLanguageMode(value);
   }
 
   /**
@@ -165,6 +177,25 @@ public final class CompileTask
     } else {
       throw new BuildException(
           "Unrecognized 'warning' option value (" + value + ")");
+    }
+  }
+
+  /**
+   * Set the environment which determines the builtin extern set.
+   * @param value The name of the environment.
+   *     (BROWSER, CUSTOM).
+   */
+  public void setEnvironment(String value) {
+    switch (value) {
+      case "BROWSER":
+        this.environment = CompilerOptions.Environment.BROWSER;
+        break;
+      case "CUSTOM":
+        this.environment = CompilerOptions.Environment.CUSTOM;
+        break;
+      default:
+        throw new BuildException(
+            "Unrecognized 'environment' option value (" + value + ")");
     }
   }
 
@@ -196,13 +227,6 @@ public final class CompileTask
 
   public void setManageDependencies(boolean value) {
     this.manageDependencies = value;
-  }
-
-  /**
-   * Use only custom externs.
-   */
-  public void setCustomExternsOnly(boolean value) {
-    this.customExternsOnly = value;
   }
 
   /**
@@ -251,7 +275,7 @@ public final class CompileTask
    * Set output file encoding
    */
   public void setOutputEncoding(String outputEncoding) {
-    this.outputEncoding = outputEncoding;
+    this.outputEncoding = Charset.forName(outputEncoding);
   }
 
   /**
@@ -269,10 +293,23 @@ public final class CompileTask
   }
 
   /**
+   * Normally, when there are an equal number of single and double quotes
+   * in a string, the compiler will use double quotes. Set this to true
+   * to prefer single quotes.
+   */
+  public void setPreferSingleQuotes(boolean singlequotes) {
+    this.preferSingleQuotes = singlequotes;
+  }
+
+  /**
    * Set force recompile option
    */
   public void setForceRecompile(boolean forceRecompile) {
     this.forceRecompile = forceRecompile;
+  }
+
+  public void setAngularPass(boolean angularPass) {
+    this.angularPass = angularPass;
   }
 
   /**
@@ -290,7 +327,7 @@ public final class CompileTask
   }
 
   /**
-   * Adds a <warning/> entry
+   * Adds a {@code <warning/>} entry
    *
    * Each warning entry must have two attributes, group and level. Group must
    * contain one of the constants from DiagnosticGroups (e.g.,
@@ -302,7 +339,7 @@ public final class CompileTask
   }
 
   /**
-   * Adds a <entrypoint/> entry
+   * Adds a {@code <entrypoint/>} entry
    *
    * Each entrypoint entry must have one attribute, name.
    */
@@ -318,7 +355,7 @@ public final class CompileTask
   }
 
   /**
-   * Adds a <path/> entry.
+   * Adds a {@code <path/>} entry.
    */
   public void addPath(Path list) {
     this.sourcePaths.add(list);
@@ -335,7 +372,7 @@ public final class CompileTask
     CompilerOptions options = createCompilerOptions();
     Compiler compiler = createCompiler(options);
 
-    List<SourceFile> externs = findExternFiles();
+    List<SourceFile> externs = findExternFiles(options);
     List<SourceFile> sources = findSourceFiles();
 
     if (isStale() || forceRecompile) {
@@ -349,15 +386,14 @@ public final class CompileTask
 
         if (this.outputWrapperFile != null) {
           try {
-            this.outputWrapper = Files.toString(this.outputWrapperFile, UTF_8);
+            this.outputWrapper = Files.asCharSource(this.outputWrapperFile, UTF_8).read();
           } catch (Exception e) {
             throw new BuildException("Invalid output_wrapper_file specified.");
           }
         }
 
         if (this.outputWrapper != null) {
-          int pos = -1;
-          pos = this.outputWrapper.indexOf(CommandLineRunner.OUTPUT_MARKER);
+          int pos = this.outputWrapper.indexOf(CommandLineRunner.OUTPUT_MARKER);
           if (pos > -1) {
             String prefix = this.outputWrapper.substring(0, pos);
             source.insert(0, prefix);
@@ -374,8 +410,6 @@ public final class CompileTask
 
         if (result.sourceMap != null) {
           flushSourceMap(result.sourceMap);
-          source.append(System.getProperty("line.separator"));
-          source.append("//@ sourceMappingURL=" + sourceMapOutputFile.getName());
         }
         writeResult(source.toString());
       } else {
@@ -387,10 +421,8 @@ public final class CompileTask
   }
 
   private void flushSourceMap(SourceMap sourceMap) {
-    try {
-      FileWriter out = new FileWriter(sourceMapOutputFile);
-      sourceMap.appendTo(out, sourceMapOutputFile.getName());
-      out.close();
+    try (FileWriter out = new FileWriter(sourceMapOutputFile)) {
+      sourceMap.appendTo(out, outputFile.getName());
     } catch (IOException e) {
       throw new BuildException("Cannot write sourcemap to file.", e);
     }
@@ -404,17 +436,22 @@ public final class CompileTask
       this.compilationLevel.setDebugOptionsForCompilationLevel(options);
     }
 
+    options.setEnvironment(this.environment);
+
     options.setPrettyPrint(this.prettyPrint);
     options.setPrintInputDelimiter(this.printInputDelimiter);
+    options.setPreferSingleQuotes(this.preferSingleQuotes);
     options.setGenerateExports(this.generateExports);
 
     options.setLanguageIn(this.languageIn);
+    options.setLanguageOut(this.languageOut);
     options.setOutputCharset(this.outputEncoding);
 
     this.warningLevel.setOptionsForWarningLevel(options);
     options.setManageClosureDependencies(manageDependencies);
     convertEntryPointParameters(options);
     options.setTrustedStrings(true);
+    options.setAngularPass(angularPass);
 
     if (replaceProperties) {
       convertPropertiesMap(options);
@@ -438,10 +475,12 @@ public final class CompileTask
     }
 
     if (!Strings.isNullOrEmpty(sourceMapLocationMapping)) {
-      String tokens[] = sourceMapLocationMapping.split("\\|", -1);
+      String[] tokens = sourceMapLocationMapping.split("\\|", -1);
       LocationMapping lm = new LocationMapping(tokens[0], tokens[1]);
       options.setSourceMapLocationMappings(Arrays.asList(lm));
     }
+
+    options.setApplyInputSourceMaps(applyInputSourceMaps);
 
     if (sourceMapOutputFile != null) {
       File parentFile = sourceMapOutputFile.getParentFile();
@@ -494,7 +533,7 @@ public final class CompileTask
    * replacements.
    */
   private void convertEntryPointParameters(CompilerOptions options) {
-    List<String> entryPoints = new LinkedList();
+    List<String> entryPoints = new ArrayList<>();
     for (Parameter p : entryPointParams) {
       String key = p.getName();
       entryPoints.add(key);
@@ -578,11 +617,9 @@ public final class CompileTask
     return compiler;
   }
 
-  private List<SourceFile> findExternFiles() {
-    List<SourceFile> files = new LinkedList();
-    if (!this.customExternsOnly) {
-      files.addAll(getDefaultExterns());
-    }
+  private List<SourceFile> findExternFiles(CompilerOptions options) {
+    List<SourceFile> files = new ArrayList<>();
+    files.addAll(getBuiltinExterns(options));
 
     for (FileList list : this.externFileLists) {
       files.addAll(findJavaScriptFiles(list));
@@ -592,7 +629,7 @@ public final class CompileTask
   }
 
   private List<SourceFile> findSourceFiles() {
-    List<SourceFile> files = new LinkedList();
+    List<SourceFile> files = new ArrayList<>();
 
     for (FileList list : this.sourceFileLists) {
       files.addAll(findJavaScriptFiles(list));
@@ -610,7 +647,7 @@ public final class CompileTask
    * the compiler expects.
    */
   private List<SourceFile> findJavaScriptFiles(ResourceCollection rc) {
-    List<SourceFile> files = new LinkedList();
+    List<SourceFile> files = new ArrayList<>();
     Iterator<Resource> iter = rc.iterator();
     while (iter.hasNext()) {
       FileResource fr = (FileResource) iter.next();
@@ -629,9 +666,9 @@ public final class CompileTask
    *
    * Adapted from {@link CommandLineRunner}.
    */
-  private List<SourceFile> getDefaultExterns() {
+  private List<SourceFile> getBuiltinExterns(CompilerOptions options) {
     try {
-      return CommandLineRunner.getDefaultExterns();
+      return CommandLineRunner.getBuiltinExterns(options.getEnvironment());
     } catch (IOException e) {
       throw new BuildException(e);
     }
@@ -643,12 +680,9 @@ public final class CompileTask
           this.outputFile.getParentFile(), Project.MSG_DEBUG);
     }
 
-    try {
-      OutputStreamWriter out = new OutputStreamWriter(
-          new FileOutputStream(this.outputFile), outputEncoding);
+    try (OutputStreamWriter out =
+        new OutputStreamWriter(new FileOutputStream(this.outputFile), outputEncoding)) {
       out.append(source);
-      out.flush();
-      out.close();
     } catch (IOException e) {
       throw new BuildException(e);
     }
@@ -709,7 +743,7 @@ public final class CompileTask
   /**
    * Returns the last modified timestamp of the given File.
    */
-  private long getLastModifiedTime(File file) {
+  private static long getLastModifiedTime(File file) {
     long fileLastModified = file.lastModified();
     // If the file is absent, we don't know if it changed (maybe was deleted),
     // so assume it has just changed.

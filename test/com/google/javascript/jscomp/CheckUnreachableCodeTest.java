@@ -16,6 +16,8 @@
 
 package com.google.javascript.jscomp;
 
+import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
+
 /**
  * Tests for {@link CheckUnreachableCode}.
  *
@@ -25,6 +27,12 @@ public final class CheckUnreachableCodeTest extends CompilerTestCase {
   protected CompilerPass getProcessor(Compiler compiler) {
     return new CombinedCompilerPass(compiler,
         new CheckUnreachableCode(compiler));
+  }
+
+  @Override
+  public void setUp() throws Exception {
+    super.setUp();
+    setAcceptedLanguage(LanguageMode.ECMASCRIPT_2017);
   }
 
   public void testCorrectSimple() {
@@ -209,7 +217,160 @@ public final class CheckUnreachableCodeTest extends CompilerTestCase {
         "}\n");
   }
 
+  public void testES6FeaturesInIfExpression() {
+    // class X{} always eval to true by toBoolean();
+    assertUnreachable("if(!class {}) x = 1;");
+    assertUnreachable("if(!class A{}) x = 1;");
+
+    // Template string with substitution and tagged template will be evaluated
+    // to UNKNOWN. Template string with definite length (without substitution)
+    // will be evaled like a normal string.
+    assertUnreachable("if(!`tempLit`) {x = 1;}");
+    assertUnreachable("if(``) {x = 1;}");
+    testSame("if(`temp${sub}Lit`) {x = 1;} else {x = 2;}");
+    testSame("if(`${sub}`) {x = 1;} else {x = 2;}");
+    testSame("if(tagged`tempLit`) {x = 1;} else {x = 2;}");
+
+    // Functions are truthy.
+    assertUnreachable("if(()=>true) {x = 1;} else {x = 2;}");
+  }
+
+  public void testES6FeaturesInTryCatch() {
+    assertUnreachable("try { let x = 1; } catch(e) {}");
+    assertUnreachable("try { const x = 1; } catch(e) {}");
+    assertUnreachable("try {()=>42;} catch(e) {}");
+    assertUnreachable("try {function *gen(){};} catch(e) {}");
+    // Assumed tagged template may throw exception.
+    testSame("try {tagged`temp`;} catch(e) {}");
+
+    assertUnreachable("try { var obj = {a(){}};} catch(e) {}");
+    testSame("try { var obj = {a(){}}; obj.a();} catch(e) {}");
+  }
+
+  public void testCorrectForOfBreakAndContinues() {
+    testSame("for(x of [1, 2, 3]) {foo();}");
+    testSame("for(x of [1, 2, 3]) {foo(); break;}");
+    testSame("for(x of [1, 2, 3]) {foo(); continue;}");
+  }
+
+  public void testInCorrectForOfBreakAndContinues() {
+    assertUnreachable("for(x of [1, 2, 3]) {foo(); break; bar();}");
+    assertUnreachable("for(x of [1, 2, 3]) {foo(); continue; bar();}");
+
+    assertUnreachable("for(x of [1, 2, 3]) {if(x) {break; bar();}}");
+    assertUnreachable("for(x of [1, 2, 3]) {if(x) {continue; bar();}}");
+  }
+
+  public void testForLoopsEs6() {
+    assertUnreachable("for(;;) {if(x) {continue; bar();}}");
+    assertUnreachable("for(x in y) {if(x) {continue; bar();}}");
+  }
+
+  public void testReturnsInShorthandFunctionOfObjLit() {
+    testSame(lines(
+        "var obj = {",
+        "  f() { ",
+        "    switch(x) { ",
+        "      default: return; ",
+        "      case 1: x++; ",
+        "    }",
+        "  }",
+        "}"));
+    assertUnreachable(lines(
+        "var obj = {f() {",
+        "  switch(x) { ",
+        "    default: return; ",
+        "    case 1: return; ",
+        "  }",
+        "  return; ",
+        "}}"));
+    testSame("var obj = {f() { if(x) {return;} else {return; }}}");
+    assertUnreachable(lines(
+        "var obj = {f() { ",
+        "  if(x) {",
+        "    return;",
+        "  } else {",
+        "    return;",
+        "  }",
+        "  return; ",
+        "}}"));
+  }
+
+  public void testObjLit() {
+    assertUnreachable("var a = {c(){if(true){return;}x = 1;}};");
+  }
+
+  public void testClass() {
+    testSame("class C{func(){}}");
+    assertUnreachable("class C{func(){if (true){return;} else {return;}}}");
+    assertUnreachable("class C{func(){if (true){return;} x = 1;}}");
+    testSame("var C = class{func(){}}");
+    testSame("let C = class{func(){}}");
+    testSame("var C; C = class{func(){}}");
+    testSame("let C; C = class{func(){}}");
+    assertUnreachable("var C = class{func(){if (true){return;} x = 1;}}");
+  }
+
+  public void testUnderClass() {
+    testSame("class C {} alert(1);");
+    testSame("class D {} class C extends D {} alert(1)");
+    testSame("class D{} alert(1); class C extends D {}");
+  }
+
+  public void testFunction() {
+    testSame("function f() {} alert(1);");
+  }
+
+  public void testSubclass() {
+    testSame(
+        lines(
+            "class D {foo() {if (true) {return;}}}",
+            "class C extends D {foo() {super.foo();}}"));
+  }
+
+  public void testArrowFunction() {
+    testSame("() => 3");
+    testSame("e => e + 1");
+    testSame("listen('click', e => onclick(e), true);");
+    testSame("listen('click', e => { onclick(e); }, true);");
+    assertUnreachable("listen('click', e => { return 0; onclick(e); }, true);");
+    assertUnreachable("() => {return 3; x = 1;}");
+    assertUnreachable("() => { if (false) x = 1;}");
+    testSame("var f = array.filter(g => {if (g % 3) x = 1;});");
+    assertUnreachable("var f = array.filter(g => {if (false) g = 1;});");
+  }
+
+  public void testGenerators() {
+    testSame(
+        lines(
+            "function* f() {",
+            "  var i = 0;",
+            "  while(true)",
+            "    yield i++;",
+            "}"));
+
+    assertUnreachable(
+        lines(
+            "function* f() {",
+            "  var i = 0;",
+            "  while(true) {",
+            "    yield i++;",
+            "  }",
+            "  i = 1;",
+            "}"));
+
+    testSame(
+        lines(
+            "function* f() {",
+            "  var i = 0;",
+            "  while(true) {",
+            "    yield i;",
+            "    i++;",
+            "  }",
+            "}"));
+  }
+
   private void assertUnreachable(String js) {
-    test(js, js, null, CheckUnreachableCode.UNREACHABLE_CODE);
+    test(js, js, warning(CheckUnreachableCode.UNREACHABLE_CODE));
   }
 }

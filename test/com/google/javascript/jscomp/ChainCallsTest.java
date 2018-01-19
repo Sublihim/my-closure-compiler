@@ -21,6 +21,7 @@ package com.google.javascript.jscomp;
  *
  */
 public final class ChainCallsTest extends CompilerTestCase {
+
   @Override
   protected CompilerPass getProcessor(final Compiler compiler) {
     return new ChainCalls(compiler);
@@ -62,6 +63,24 @@ public final class ChainCallsTest extends CompilerTestCase {
         + "Foo.prototype.baz = function() {};\n"
         + "var f = new Foo();\n"
         + "f.bar().baz();\n");
+  }
+
+  public void testCallInIfInFunction() {
+    test(
+        lines(
+            "function blah() {",
+            "  /** @constructor */ function Foo() {}",
+            "  Foo.prototype.bar = function() { return this; };",
+            "  var f = new Foo();",
+            "  if (true) {f.bar(); f.bar()}",
+            "}"),
+        lines(
+            "function blah() {",
+            "  /** @constructor */ function Foo() {}",
+            "  Foo.prototype.bar = function() { return this; };",
+            "  var f = new Foo();",
+            "  if (true) {f.bar().bar()}",
+            "}"));
   }
 
   public void testDifferentInstance() {

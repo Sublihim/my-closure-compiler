@@ -21,7 +21,6 @@ import com.google.javascript.jscomp.NodeTraversal.AbstractPostOrderCallback;
 import com.google.javascript.jscomp.NodeTraversal.ScopedCallback;
 import com.google.javascript.jscomp.graph.DiGraph.DiGraphEdge;
 import com.google.javascript.rhino.Node;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -37,8 +36,8 @@ class ChainCalls implements CompilerPass {
   private final Set<Node> badFunctionNodes = new HashSet<>();
   private final Set<Node> goodFunctionNodes = new HashSet<>();
   private final List<CallSite> callSites = new ArrayList<>();
-  private SimpleDefinitionFinder defFinder;
-  private GatherFunctions gatherFunctions = new GatherFunctions();
+  private NameBasedDefinitionProvider defFinder;
+  private final GatherFunctions gatherFunctions = new GatherFunctions();
 
   ChainCalls(AbstractCompiler compiler) {
     this.compiler = compiler;
@@ -46,17 +45,17 @@ class ChainCalls implements CompilerPass {
 
   @Override
   public void process(Node externs, Node root) {
-    defFinder = new SimpleDefinitionFinder(compiler);
+    defFinder = new NameBasedDefinitionProvider(compiler, false);
     defFinder.process(externs, root);
 
-    NodeTraversal.traverse(compiler, root, new GatherCallSites());
+    NodeTraversal.traverseEs6(compiler, root, new GatherCallSites());
 
     for (CallSite callSite : callSites) {
       callSite.parent.removeChild(callSite.n);
       callSite.n.removeChild(callSite.callNode);
       callSite.nextGetPropNode.replaceChild(callSite.nextGetPropFirstChildNode,
                                             callSite.callNode);
-      compiler.reportCodeChange();
+      compiler.reportChangeToEnclosingScope(callSite.parent);
     }
   }
 
@@ -133,7 +132,9 @@ class ChainCalls implements CompilerPass {
           return;
         }
         if (!goodFunctionNodes.contains(rValue)) {
-          NodeTraversal.traverse(compiler, rValue, gatherFunctions);
+          new NodeTraversal(compiler, gatherFunctions, new Es6SyntacticScopeCreator(compiler))
+              .traverseInnerNode(
+                  rValue, rValue.getParent(), t.getClosestHoistScope().getParent());
           if (badFunctionNodes.contains(rValue)) {
             return;
           }

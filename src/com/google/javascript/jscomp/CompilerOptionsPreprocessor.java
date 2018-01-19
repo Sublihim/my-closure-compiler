@@ -15,10 +15,18 @@
  */
 package com.google.javascript.jscomp;
 
+import static com.google.common.base.Strings.isNullOrEmpty;
+
+import com.google.javascript.jscomp.parsing.parser.FeatureSet;
+import com.google.javascript.jscomp.parsing.parser.util.format.SimpleFormat;
 
 /**
  * Checks for combinations of options that are incompatible, i.e. will produce
  * incorrect code.
+ *
+ * This is run by Compiler#compileInternal, which is not run during unit tests.
+ * The catch is that it's run after Compiler#initOptions, so if for example
+ * you want to change the warningsGuard, you can't do it here.
  *
  * <p>Also, turns off options if the provided options don't make sense together.
  *
@@ -28,8 +36,7 @@ final class CompilerOptionsPreprocessor {
 
   static void preprocess(CompilerOptions options) {
     if (options.checkMissingGetCssNameLevel.isOn()
-        && (options.checkMissingGetCssNameBlacklist == null
-            || options.checkMissingGetCssNameBlacklist.isEmpty())) {
+        && (isNullOrEmpty(options.checkMissingGetCssNameBlacklist))) {
       throw new InvalidOptionsException(
           "Cannot check use of goog.getCssName because of empty blacklist.");
     }
@@ -37,43 +44,35 @@ final class CompilerOptionsPreprocessor {
     if (options.removeUnusedPrototypePropertiesInExterns
         && !options.removeUnusedPrototypeProperties) {
       throw new InvalidOptionsException(
-          "remove_unused_prototype_properties_in_externs requires "
-          + "remove_unused_prototype_properties to be turned on.");
+          "remove_unused_prototype_props_in_externs requires "
+          + "remove_unused_prototype_props to be turned on.");
     }
 
-    if (options.getLanguageIn() == options.getLanguageOut()) {
-      // No conversion.
-    } else if (!options.getLanguageIn().isEs6OrHigher()
-        && !options.getAllowEs6Out()) {
-      throw new InvalidOptionsException(
-          "Can only convert code from ES6 to a lower ECMAScript version."
-          + " Cannot convert from %s to %s.",
-          options.getLanguageIn(), options.getLanguageOut());
-    }
-
-    if (options.getLanguageOut().isEs6OrHigher() && !options.getAllowEs6Out()) {
-      throw new InvalidOptionsException(
-          "ES6 is only supported for transpilation to a lower ECMAScript"
-          + " version. Set --language_out to ES3, ES5, or ES5_strict.");
-    }
-
-    if (!options.inlineFunctions
+    if (options.getInlineFunctionsLevel() == CompilerOptions.Reach.NONE
         && options.maxFunctionSizeAfterInlining
-        != CompilerOptions.UNLIMITED_FUN_SIZE_AFTER_INLINING) {
+            != CompilerOptions.UNLIMITED_FUN_SIZE_AFTER_INLINING) {
       throw new InvalidOptionsException(
-          "max_function_size_after_inlining has no effect if inlining is"
-          + " disabled.");
+          "max_function_size_after_inlining has no effect if inlining is disabled.");
     }
 
-    if (options.useNewTypeInference) {
-      options.checkTypes = false;
-      options.inferTypes = false;
-      options.checkMissingReturn = CheckLevel.OFF;
+    if (options.getNewTypeInference()) {
       options.checkGlobalThisLevel = CheckLevel.OFF;
-      // There is also overlap in the warnings of GlobalTypeInfo and VarCheck
-      // and VariableReferenceCheck.
-      // But VarCheck is always added in DefaultPassConfig, and
-      // VariableReferenceCheck finds warnings that we don't, so leave them on.
+    }
+
+    if (options.dartPass) {
+      if (!options.getLanguageOut().toFeatureSet().contains(FeatureSet.ES5)) {
+        throw new InvalidOptionsException("Dart requires --language_out=ES5 or higher.");
+      }
+      // --dart_pass does not support type-aware property renaming yet.
+      options.setAmbiguateProperties(false);
+      options.setDisambiguateProperties(false);
+    }
+
+    if (options.removeUnusedPrototypePropertiesInExterns
+        && options.exportLocalPropertyDefinitions) {
+      throw new InvalidOptionsException(
+          "remove_unused_prototype_props_in_externs "
+          + "and export_local_property_definitions cannot be used together.");
     }
 
   }
@@ -83,7 +82,7 @@ final class CompilerOptionsPreprocessor {
    */
   public static class InvalidOptionsException extends RuntimeException {
     private InvalidOptionsException(String message, Object... args) {
-      super(String.format(message, args));
+      super(SimpleFormat.format(message, args));
     }
   }
 

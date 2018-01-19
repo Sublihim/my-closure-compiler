@@ -19,98 +19,53 @@ package com.google.javascript.jscomp;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import com.google.common.base.Joiner;
 import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
+import com.google.javascript.jscomp.parsing.parser.FeatureSet.Feature;
 import com.google.javascript.rhino.testing.BaseJSTypeTestCase;
-
 import java.util.Arrays;
 
+/**
+ * This class is mostly used by passes testing the old type checker.
+ * Passes that run after type checking and need type information use
+ * the class TypeICompilerTestCase.
+ */
 abstract class CompilerTypeTestCase extends BaseJSTypeTestCase {
 
-  static final String ACTIVE_X_OBJECT_DEF =
-      "/**\n" +
-      " * @param {string} progId\n" +
-      " * @param {string=} opt_location\n" +
-      " * @constructor\n" +
-      " * @see http://msdn.microsoft.com/en-us/library/7sw4ddf8.aspx\n" +
-      " */\n" +
-      "function ActiveXObject(progId, opt_location) {}\n";
-
-  static final String CLOSURE_DEFS =
-      "var goog = {};" +
-      "goog.inherits = function(x, y) {};" +
-      "/** @type {!Function} */ goog.abstractMethod = function() {};" +
-      "goog.isArray = function(x) {};" +
-      "goog.isDef = function(x) {};" +
-      "goog.isFunction = function(x) {};" +
-      "goog.isNull = function(x) {};" +
-      "goog.isString = function(x) {};" +
-      "goog.isObject = function(x) {};" +
-      "goog.isDefAndNotNull = function(x) {};" +
-      "goog.array = {};" +
+  static final String CLOSURE_DEFS = LINE_JOINER.join(
+      "/** @const */ var goog = {};",
+      "goog.inherits = function(x, y) {};",
+      "/** @type {!Function} */ goog.abstractMethod = function() {};",
+      "goog.isArray = function(x) {};",
+      "goog.isDef = function(x) {};",
+      "goog.isFunction = function(x) {};",
+      "goog.isNull = function(x) {};",
+      "goog.isString = function(x) {};",
+      "goog.isObject = function(x) {};",
+      "goog.isDefAndNotNull = function(x) {};",
+      "/** @const */ goog.array = {};",
       // simplified ArrayLike definition
-      "/**\n" +
-      " * @typedef {Array|{length: number}}\n" +
-      " */\n" +
-      "goog.array.ArrayLike;" +
-      "/**\n" +
-      " * @param {Array.<T>|{length:number}} arr\n" +
-      " * @param {function(this:S, T, number, goog.array.ArrayLike):boolean} f\n" +
-      " * @param {S=} opt_obj\n" +
-      " * @return {!Array.<T>}\n" +
-      " * @template T,S\n" +
-      " */" +
+      "/**",
+      " * @typedef {Array|{length: number}}",
+      " */",
+      "goog.array.ArrayLike;",
+      "/**",
+      " * @param {Array.<T>|{length:number}} arr",
+      " * @param {function(this:S, T, number, goog.array.ArrayLike):boolean} f",
+      " * @param {S=} opt_obj",
+      " * @return {!Array.<T>}",
+      " * @template T,S",
+      " */",
       // return empty array to satisfy return type
-      "goog.array.filter = function(arr, f, opt_obj){ return []; };" +
-      "goog.asserts = {};" +
-      "/** @return {*} */ goog.asserts.assert = function(x) { return x; };";
+      "goog.array.filter = function(arr, f, opt_obj){ return []; };",
+      "goog.asserts = {};",
+      "/** @return {*} */ goog.asserts.assert = function(x) { return x; };");
 
   /** A default set of externs for testing. */
-  static final String DEFAULT_EXTERNS =
-      "/**\n" +
-      " * @constructor\n" +
-      " * @param {*=} opt_value\n" +
-      " * @return {!Object}\n" +
-      " */\n" +
-      "function Object(opt_value) {}" +
-      "/** @constructor \n * @param {*} var_args */ " +
-      "function Function(var_args) {}" +
-      "/** @type {!Function} */ Function.prototype.apply;" +
-      "/** @type {!Function} */ Function.prototype.bind;" +
-      "/** @type {!Function} */ Function.prototype.call;" +
-      "/** @constructor \n * @param {*=} arg \n @return {string} */" +
-      "function String(arg) {}" +
-      "/** @param {number} sliceArg */\n" +
-      "String.prototype.slice = function(sliceArg) {};" +
-      "/** @type {number} */ String.prototype.length;" +
-      "/**\n" +
-      " * @template T\n" +
-      " * @constructor\n" +
-      " * @param {*} var_args\n" +
-      " * @return {!Array.<?>}\n" +
-      " */\n" +
-      "function Array(var_args) {}\n" +
-      "/** @type {number} */ Array.prototype.length;\n" +
-      "/**\n" +
-      " * @param {...T} var_args\n" +
-      " * @return {number} The new length of the array.\n" +
-      " * @this {{length: number}|Array.<T>}\n" +
-      " * @template T\n" +
-      " * @modifies {this}\n" +
-      " */\n" +
-      "Array.prototype.push = function(var_args) {};" +
-      "/** @constructor */\n" +
-      "function Arguments() {}\n" +
-      "/** @type {number} */\n" +
-      "Arguments.prototype.length;\n" +
-      "/** @type {!Arguments} */\n" +
-      "var arguments;" +
-      "" + ACTIVE_X_OBJECT_DEF +
-      "/** @type {?} */ var unknown;"; // For producing unknowns in tests.
+  static final String DEFAULT_EXTERNS = CompilerTestCase.DEFAULT_EXTERNS;
 
   protected Compiler compiler;
 
-  protected CompilerOptions getOptions() {
+  protected CompilerOptions getDefaultOptions() {
     CompilerOptions options = new CompilerOptions();
     options.setLanguageIn(LanguageMode.ECMASCRIPT5);
     options.setWarningLevel(
@@ -120,6 +75,7 @@ abstract class CompilerTypeTestCase extends BaseJSTypeTestCase {
     options.setWarningLevel(
         DiagnosticGroups.INVALID_CASTS, CheckLevel.WARNING);
     options.setWarningLevel(DiagnosticGroups.LINT_CHECKS, CheckLevel.WARNING);
+    options.setWarningLevel(DiagnosticGroups.JSDOC_MISSING_TYPE, CheckLevel.WARNING);
     options.setCodingConvention(getCodingConvention());
     return options;
   }
@@ -141,15 +97,30 @@ abstract class CompilerTypeTestCase extends BaseJSTypeTestCase {
       }
     }
     if (warnings.length > 0) {
-      fail("unexpected warnings(s):\n" + Joiner.on("\n").join(warnings));
+      fail("unexpected warnings(s):\n" + LINE_JOINER.join(warnings));
     }
   }
 
   @Override
-  protected void setUp() {
+  protected void setUp() throws Exception {
+    super.setUp();
+    initializeNewCompiler(getDefaultOptions());
+  }
+
+  protected static String lines(String line) {
+    return line;
+  }
+
+  protected static String lines(String... lines) {
+    return LINE_JOINER.join(lines);
+  }
+
+  protected void initializeNewCompiler(CompilerOptions options) {
     compiler = new Compiler();
-    compiler.initOptions(getOptions());
+    compiler.initOptions(options);
+    compiler.setFeatureSet(compiler.getFeatureSet().without(Feature.MODULES));
     registry = compiler.getTypeRegistry();
+    registry.setOptimizePropertyIndex_TRANSITIONAL_METHOD(true);
     initTypes();
   }
 }

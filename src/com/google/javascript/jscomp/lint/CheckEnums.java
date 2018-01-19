@@ -31,9 +31,18 @@ import java.util.Set;
  * Check for duplicate values in enums.
  */
 public final class CheckEnums extends AbstractPostOrderCallback implements CompilerPass {
-  public static final DiagnosticType DUPLICATE_ENUM_VALUE = DiagnosticType.warning(
+  public static final DiagnosticType DUPLICATE_ENUM_VALUE = DiagnosticType.disabled(
       "JSC_DUPLICATE_ENUM_VALUE",
       "The value {0} is duplicated in this enum.");
+  public static final DiagnosticType COMPUTED_PROP_NAME_IN_ENUM = DiagnosticType.disabled(
+      "JSC_COMPUTED_PROP_NAME_IN_ENUM",
+      "Computed property name used in enum.");
+  public static final DiagnosticType SHORTHAND_ASSIGNMENT_IN_ENUM = DiagnosticType.disabled(
+      "JSC_SHORTHAND_ASSIGNMENT_IN_ENUM",
+      "Shorthand assignment used in enum.");
+  public static final DiagnosticType ENUM_PROP_NOT_CONSTANT = DiagnosticType.disabled(
+      "JSC_ENUM_PROP_NOT_CONSTANT",
+      "enum key {0} must be in ALL_CAPS.");
 
   private final AbstractCompiler compiler;
 
@@ -43,7 +52,7 @@ public final class CheckEnums extends AbstractPostOrderCallback implements Compi
 
   @Override
   public void process(Node externs, Node root) {
-    NodeTraversal.traverse(compiler, root, this);
+    NodeTraversal.traverseEs6(compiler, root, this);
   }
 
   @Override
@@ -51,17 +60,41 @@ public final class CheckEnums extends AbstractPostOrderCallback implements Compi
     if (n.isObjectLit()) {
       JSDocInfo jsdoc = NodeUtil.getBestJSDocInfo(n);
       if (jsdoc != null && jsdoc.hasEnumParameterType()) {
+        checkNamingAndAssignmentUsage(t, n);
         checkDuplicateEnumValues(t, n);
       }
+    }
+  }
+
+  private void checkNamingAndAssignmentUsage(NodeTraversal t, Node n) {
+    for (Node child : n.children()) {
+      checkName(t, child);
+    }
+  }
+
+  private void checkName(NodeTraversal t, Node node) {
+    if (node.isComputedProp()) {
+      t.report(node, COMPUTED_PROP_NAME_IN_ENUM);
+      return;
+    }
+
+    if (node.isStringKey() && node.isShorthandProperty()) {
+      t.report(node, SHORTHAND_ASSIGNMENT_IN_ENUM);
+    }
+
+    if (!compiler.getCodingConvention().isValidEnumKey(node.getString())) {
+      t.report(node, ENUM_PROP_NOT_CONSTANT);
     }
   }
 
   private void checkDuplicateEnumValues(NodeTraversal t, Node n) {
     Set<String> values = new HashSet<>();
     for (Node child : n.children()) {
-      Node valueNode = child.getFirstChild();
+      Node valueNode = child.getLastChild();
       String value;
-      if (valueNode.isString()) {
+      if (valueNode == null) {
+        return;
+      } else if (valueNode.isString()) {
         value = valueNode.getString();
       } else if (valueNode.isNumber()) {
         value = Double.toString(valueNode.getDouble());
@@ -75,4 +108,3 @@ public final class CheckEnums extends AbstractPostOrderCallback implements Compi
     }
   }
 }
-

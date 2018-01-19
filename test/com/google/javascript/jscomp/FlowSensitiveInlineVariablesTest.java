@@ -25,17 +25,19 @@ import com.google.javascript.rhino.Node;
 
 public final class FlowSensitiveInlineVariablesTest extends CompilerTestCase  {
 
-  public static final String EXTERN_FUNCTIONS = "" +
-      "var print;\n" +
-      "/** @nosideeffects */ function noSFX() {} \n" +
-      "                      function hasSFX() {} \n";
+  public static final String EXTERN_FUNCTIONS = lines(
+      "var print;",
+      "/** @nosideeffects */ function noSFX() {}",
+      "                      function hasSFX() {}");
 
-  public FlowSensitiveInlineVariablesTest() {
-    enableNormalize(true);
+  @Override
+  protected void setUp() throws Exception {
+    super.setUp();
+    enableNormalize();
   }
 
   @Override
-  public int getNumRepetitions() {
+  protected int getNumRepetitions() {
     // Test repeatedly inline.
     return 3;
   }
@@ -80,15 +82,6 @@ public final class FlowSensitiveInlineVariablesTest extends CompilerTestCase  {
   public void testDoNotInlineIncrement() {
     noInline("var x = 1; x++;");
     noInline("var x = 1; x--;");
-  }
-
-  public void testDoNotInlineAssignmentOp() {
-    noInline("var x = 1; x += 1;");
-    noInline("var x = 1; x -= 1;");
-  }
-
-  public void testDoNotInlineIntoLhsOfAssign() {
-    noInline("var x = 1; x += 3;");
   }
 
   public void testMultiUse() {
@@ -582,12 +575,181 @@ public final class FlowSensitiveInlineVariablesTest extends CompilerTestCase  {
     noInline("var i = 0; return (1 ? (i = 5) : 0) * i;");
   }
 
+  // GitHub issue #250: https://github.com/google/closure-compiler/issues/250
+  public void testInlineStringConcat() {
+    test(lines(
+        "function f() {",
+        "  var x = '';",
+        "  x = x + '1';",
+        "  x = x + '2';",
+        "  x = x + '3';",
+        "  x = x + '4';",
+        "  x = x + '5';",
+        "  x = x + '6';",
+        "  x = x + '7';",
+        "  return x;",
+        "}"),
+        "function f() { var x; return '' + '1' + '2' + '3' + '4' + '5' + '6' + '7'; }");
+  }
+
+  public void testInlineInArrowFunctions() {
+    test("() => {var v; v = 1; return v;} ",
+        "() => {var v; return 1;}");
+
+    test("(v) => {v = 1; return v;}",
+        "(v) => {return 1;}");
+  }
+
+  public void testInlineInClassMemberFunctions() {
+    test(
+        lines(
+            "class C {",
+            "  func() {",
+            "    var x;",
+            "    x = 1;",
+            "    return x;",
+            "  }",
+            "}"
+        ),
+        lines(
+            "class C {",
+            "  func() {",
+            "    var x;",
+            "    return 1;",
+            "  }",
+            "}"
+        )
+    );
+  }
+
+  public void testInlineLet() {
+    inline("let a = 1; print(a + 1)",
+         "let a; print(1 + 1)");
+
+    inline("let a; a = 1; print(a + 1)",
+        "let a; print(1 + 1)");
+
+    noInline("let a = noSFX(); print(a)");
+  }
+
+  public void testInlineConst() {
+    inline("const a = 1; print(a + 1)",
+        "const a = undefined; print(1 + 1)");
+
+    inline("const a = 1; const b = a; print(b + 1)",
+        "const a = undefined; const b = undefined; print(1 + 1)");
+
+    noInline("const a = noSFX(); print(a)");
+
+  }
+
+  public void testSpecific() {
+    inline("let a = 1; print(a + 1)",
+        "let a; print(1 + 1)");
+  }
+
+  public void testBlockScoping() {
+    inline(
+        lines(
+            "let a = 1",
+            "print(a + 1);",
+            "{",
+            "  let b = 2;",
+            "  print(b + 1);",
+            "}"
+        ),
+        lines(
+            "let a;",
+            "print(1 + 1);",
+            "{",
+            "  let b;",
+            "  print(2 + 1);",
+            "}"));
+
+    inline(
+        lines(
+            "let a = 1",
+            "{",
+            "  let a = 2;",
+            "  print(a + 1);",
+            "}",
+            "print(a + 1);"
+        ),
+        lines(
+            "let a = 1",
+            "{",
+            "  let a;",
+            "  print(2 + 1);",
+            "}",
+            "print(a + 1);"));
+
+    inline(
+        lines(
+            "let a = 1;",
+            "  {let b;}",
+            "print(a)"
+        ),
+        lines(
+            "let a;",
+            "  {let b;}",
+            "print(1)"));
+
+    // This test fails to inline due to CheckPathsBetweenNodes analysis in the canInline function
+    // in FlowSensitiveInlineVariables.
+    noInline(
+        lines(
+            "let a = 1;",
+            "{",
+            "  let b;",
+            "  f(b);",
+            "}",
+            "return(a)"));
+  }
+
+  public void testInlineInGenerators() {
+    test(
+        lines(
+            "function* f() {",
+            "  var x = 1;",
+            "  return x + 1;",
+            "}"
+        ),
+        lines(
+            "function* f() {",
+            "  var x;",
+            "  return 1 + 1;",
+            "}"
+        )
+    );
+  }
+
+  public void testNoInlineForOf() {
+    noInline("for (var x of n){} ");
+
+    noInline("var x = 1; var n = {}; for(x of n) {}");
+  }
+
+  public void testTemplateStrings() {
+    inline("var name = 'Foo'; `Hello ${name}`",
+        "var name; `Hello ${'Foo'}`");
+
+    inline("var name = 'Foo'; var foo = name; `Hello ${foo}`",
+        "var name; var foo; `Hello ${'Foo'}`");
+
+    inline(" var age = 3; `Age: ${age}`",
+        "var age; `Age: ${3}`");
+  }
+
+  public void testDestructuring() {
+    noInline("var [a, b, c] = [1, 2, 3]; print(a + b + c);");
+  }
+
   private void noInline(String input) {
     inline(input, input);
   }
 
   private void inline(String input, String expected) {
     test(EXTERN_FUNCTIONS, "function _func() {" + input + "}",
-        "function _func() {" + expected + "}", null, null);
+        "function _func() {" + expected + "}");
   }
 }

@@ -20,6 +20,11 @@ package com.google.javascript.jscomp.newtypes;
 public interface DeclaredTypeRegistry {
 
   /**
+   * Get the type of the function that the declared type registry represents.
+   */
+  DeclaredFunctionType getDeclaredFunctionType();
+
+  /**
    * Returns the declaration of the given qualified name,
    * or null if the name is not defined.
    * If {@code includeTypes} is true, include definitions that are not in code,
@@ -33,5 +38,9 @@ public interface DeclaredTypeRegistry {
    */
   JSType getDeclaredTypeOf(String name);
 
+  /**
+   * Returns an object that defines the built-in types, and contains other state
+   * used throughout type checking.
+   */
   JSTypes getCommonTypes();
 }

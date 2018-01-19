@@ -16,15 +16,18 @@
 
 package com.google.javascript.jscomp;
 
-import com.google.common.base.Joiner;
-import com.google.common.collect.ImmutableList;
-import com.google.javascript.rhino.IR;
-import com.google.javascript.rhino.InputId;
-import com.google.javascript.rhino.Node;
+import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
+import static com.google.javascript.jscomp.testing.JSErrorSubject.assertError;
 
+import com.google.common.collect.ImmutableList;
+import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
+import com.google.javascript.jscomp.parsing.parser.FeatureSet;
+import com.google.javascript.jscomp.parsing.parser.FeatureSet.Feature;
+import com.google.javascript.rhino.Node;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * Use by the classes that test {@link NewTypeInference}.
@@ -32,151 +35,428 @@ import java.util.List;
  * @author dimvar@google.com (Dimitris Vardoulakis)
  */
 public abstract class NewTypeInferenceTestBase extends CompilerTypeTestCase {
-  protected List<PassFactory> passes;
 
-  protected static final String CLOSURE_BASE = "var goog;";
-  protected static final String DEFAULT_EXTERNS =
-      CompilerTypeTestCase.DEFAULT_EXTERNS + "/** @return {string} */\n"
-      + "String.prototype.toString = function() { return '' };\n"
-      + "/**\n"
-      + " * @constructor\n"
-      + " * @param {*=} arg\n"
-      + " * @return {number}\n"
-      + " */\n"
-      + "function Number(arg) {}\n"
-      + "/** @return {string} */\n"
-      + "Number.prototype.toString = function() { return '' };\n"
-      + "/**\n"
-      + " * @constructor\n"
-      + " * @param {*=} arg\n"
-      + " * @return {boolean}\n"
-      + " */\n"
-      + "function Boolean(arg) {}\n"
-      + "/** @return {string} */\n"
-      + "Boolean.prototype.toString = function() { return '' };\n"
-      + "/**\n"
-      + " * @param {?=} opt_begin\n"
-      + " * @param {?=} opt_end\n"
-      + " * @return {!Array.<T>}\n"
-      + " * @this {{length: number}|string}\n"
-      + " * @template T\n"
-      + " */\n"
-      + "Array.prototype.slice = function(opt_begin, opt_end) {};\n"
-      + "/**\n"
-      + " * @param {...?} var_args\n"
-      + " * @return {!Array.<?>}\n"
-      + " */\n"
-      + "Array.prototype.concat = function(var_args) {};\n";
+  protected CompilerOptions compilerOptions;
 
-  @Override
-  protected void setUp() {
-    super.setUp();
-    passes = new ArrayList<>();
+  protected static enum InputLanguageMode {
+    TRANSPILATION,
+    NO_TRANSPILATION,
+    BOTH;
+
+    boolean checkNative() {
+      return this == NO_TRANSPILATION || this == BOTH;
+    }
+
+    boolean checkTranspiled() {
+      return this == TRANSPILATION || this == BOTH;
+    }
   }
 
-  protected final PassFactory makePassFactory(
-      String name, final CompilerPass pass) {
+  protected InputLanguageMode mode = InputLanguageMode.NO_TRANSPILATION;
+
+  protected static final String CLOSURE_BASE =
+      LINE_JOINER.join(
+          "/** @const */",
+          "var goog = {};",
+          "goog.inherits = function(child, parent){};",
+          "/** @return {void} */",
+          "goog.nullFunction = function() {};",
+          "/** @type {!Function} */",
+          "goog.abstractMethod = function(){};",
+          "goog.asserts;",
+          "goog.asserts.assert;",
+          "goog.asserts.assertArray;",
+          "goog.asserts.assertInstanceof;",
+          "goog.asserts.assertNumber;",
+          "goog.asserts.assertObject;",
+          "goog.asserts.assertString;",
+          "goog.partial;",
+          "/**",
+          " * @param {?function(this:T, ...)} fn",
+          " * @param {T} selfObj",
+          " * @param {...*} var_args",
+          " * @return {!Function}",
+          " * @template T",
+          " */",
+          "goog.bind = function(fn, selfObj, var_args) {",
+          "  return function() {};",
+          "};",
+          "goog.isNull;",
+          "goog.isDef;",
+          "goog.isDefAndNotNull;",
+          "goog.isArray;",
+          "goog.isArrayLike;",
+          "goog.isFunction;",
+          "goog.isObject;",
+          "goog.isString;",
+          "goog.isNumber;",
+          "goog.isBoolean;",
+          "goog.typeOf;",
+          "goog.addDependency = function(file, provides, requires){};",
+          "goog.forwardDeclare = function(name){};",
+          "/**",
+          " * @param {string} str",
+          " * @param {Object<string, string>=} opt_values",
+          " * @return {string}",
+          " */",
+          "goog.getMsg;",
+          "goog.addSingletonGetter;",
+          "goog.reflect;",
+          "goog.reflect.object;",
+          "Object.prototype.superClass_;");
+
+  @SuppressWarnings("hiding")
+  protected static final String DEFAULT_EXTERNS =
+      CompilerTestCase.DEFAULT_EXTERNS + LINE_JOINER.join(
+          "/** @const {undefined} */",
+          "var undefined;",
+          "/**",
+          " * @this {!String|string}",
+          " * @param {!RegExp} regexp",
+          " * @return {!Array<string>}",
+          " */",
+          "String.prototype.match = function(regexp) {};",
+          "/** @return {string} */",
+          "String.prototype.toString = function() {};",
+          "/** @return {string} */",
+          "String.prototype.toLowerCase = function() {};",
+          "String.prototype.startsWith = function(s) {};",
+          "/**",
+          " @param {number=} opt_radix",
+          " @return {string}",
+          "*/",
+          "Number.prototype.toString = function(opt_radix) {};",
+          "/**",
+          " * @param {number=} opt_fractionDigits",
+          " * @return {string}",
+          " */",
+          "Number.prototype.toExponential = function(opt_fractionDigits) {};",
+          "/** @return {string} */",
+          "Boolean.prototype.toString = function() {};",
+          "/**",
+          " * @param {?=} opt_begin",
+          " * @param {?=} opt_end",
+          " * @return {!Array.<T>}",
+          " * @this {{length: number}|string}",
+          " * @template T",
+          " */",
+          "Array.prototype.slice = function(opt_begin, opt_end) {};",
+          "/**",
+          " * @param {...?} var_args",
+          " * @return {!Array.<?>}",
+          " */",
+          "Array.prototype.concat = function(var_args) {};",
+          "/**",
+          " * @constructor",
+          " * @param {*=} opt_message",
+          " * @param {*=} opt_file",
+          " * @param {*=} opt_line",
+          " * @return {!Error}",
+          " */",
+          "function Error(opt_message, opt_file, opt_line) {}",
+          "/** @type {string} */",
+          "Error.prototype.stack;",
+          "/** @constructor */",
+          "function Window() {}",
+          "/** @type {boolean} */",
+          "Window.prototype.closed;",
+          "/** @type {!Window} */",
+          "var window;",
+          "/**",
+          " * @param {Function|string} callback",
+          " * @param {number=} opt_delay",
+          " * @param {...*} var_args",
+          " * @return {number}",
+          " */",
+          "function setTimeout(callback, opt_delay, var_args) {}",
+          "/**",
+          " * @constructor",
+          " * @extends {Array<string>}",
+          " */",
+          "var ITemplateArray = function() {};",
+          "",
+          "/** @type {!Array<string>} */",
+          "ITemplateArray.prototype.raw;",
+          "",
+          "/**",
+          " * @param {!ITemplateArray} template",
+          " * @param {...*} var_args",
+          " * @return {string}",
+          " */",
+          "String.raw = function(template, var_args) {};",
+          "/**",
+          " * @constructor",
+          " * @implements {Iterable<!Array<KEY|VALUE>>}",
+          " * @param {Iterable<!Array<KEY|VALUE>>=} opt_arg",
+          " * @template KEY, VALUE",
+          " */",
+          "function Map(opt_arg) {}",
+          "/**",
+          " * @constructor",
+          " * @implements {Iterable<VALUE>}",
+          " * @param {Iterable<VALUE>=} opt_arg",
+          " * @template VALUE",
+          " */",
+          "function Set(opt_arg) {}",
+          "/** @return {?} */",
+          "function any() {}");
+
+  @Override
+  protected void setUp() throws Exception {
+    super.setUp();
+    compilerOptions = getDefaultOptions();
+  }
+
+  @Override
+  protected CompilerOptions getDefaultOptions() {
+    CompilerOptions compilerOptions = super.getDefaultOptions();
+    compilerOptions.setClosurePass(true);
+    compilerOptions.setNewTypeInference(true);
+    compilerOptions.setWarningLevel(
+        DiagnosticGroups.NEW_CHECK_TYPES_ALL_CHECKS, CheckLevel.WARNING);
+    compilerOptions.setLanguageIn(LanguageMode.ECMASCRIPT_2017);
+    // ES5 is the highest language level that type inference understands.
+    compilerOptions.setLanguageOut(LanguageMode.ECMASCRIPT5);
+    return compilerOptions;
+  }
+
+  protected PassFactory makePassFactory(String name, final CompilerPass pass) {
     return new PassFactory(name, true/* one-time pass */) {
       @Override
       protected CompilerPass create(AbstractCompiler compiler) {
         return pass;
       }
+
+      @Override
+      protected FeatureSet featureSet() {
+        return FeatureSet.latest().withoutTypes();
+      }
     };
   }
 
-  protected final void addES6TranspilationPasses() {
-    passes.add(makePassFactory("Es6RenameVariablesInParamLists",
-            new Es6RenameVariablesInParamLists(compiler)));
-    passes.add(makePassFactory("Es6SplitVariableDeclarations",
-            new Es6SplitVariableDeclarations(compiler)));
-    passes.add(makePassFactory("es6ConvertSuper",
-            new Es6ConvertSuper(compiler)));
-    passes.add(makePassFactory("convertEs6TypedToEs6",
-            new Es6TypedToEs6Converter(compiler)));
-    passes.add(makePassFactory("convertEs6",
-            new Es6ToEs3Converter(compiler)));
-    passes.add(makePassFactory("Es6RewriteLetConst",
-            new Es6RewriteLetConst(compiler)));
-    passes.add(makePassFactory("rewriteGenerators",
-            new Es6RewriteGenerators(compiler)));
-    passes.add(makePassFactory("Es6RuntimeLibrary",
-            new InjectEs6RuntimeLibrary(compiler)));
-    passes.add(makePassFactory("Es6StaticInheritance",
-            new Es6ToEs3ClassSideInheritance(compiler)));
+  private final PassFactory setFeatureSet(final FeatureSet featureSet) {
+    return new PassFactory("setFeatureSet:" + featureSet.version(), true) {
+      @Override
+      protected CompilerPass create(final AbstractCompiler compiler) {
+        return new CompilerPass() {
+          @Override
+          public void process(Node externs, Node root) {
+            compiler.setFeatureSet(featureSet);
+          }
+        };
+      }
+
+      @Override
+      public FeatureSet featureSet() {
+        return FeatureSet.latest();
+      }
+    };
   }
 
-  protected final void parseAndTypeCheck(String externs, String js) {
-    setUp();
-    final CompilerOptions options = compiler.getOptions();
-    options.setClosurePass(true);
+  private void parseAndTypeCheck(String externs, String js) {
+    initializeNewCompiler(compilerOptions);
     compiler.init(
         ImmutableList.of(SourceFile.fromCode("[externs]", externs)),
         ImmutableList.of(SourceFile.fromCode("[testcode]", js)),
-        options);
+        compilerOptions);
+    compiler.setFeatureSet(compiler.getFeatureSet().without(Feature.MODULES));
 
-    Node externsRoot = IR.block();
-    externsRoot.setIsSyntheticBlock(true);
-    externsRoot.addChildToFront(
-        compiler.getInput(new InputId("[externs]")).getAstRoot(compiler));
-    Node astRoot = IR.block();
-    astRoot.setIsSyntheticBlock(true);
-    astRoot.addChildToFront(
-        compiler.getInput(new InputId("[testcode]")).getAstRoot(compiler));
+    compiler.parseInputs();
+    assertWithMessage("parsing errors").that(compiler.getErrors()).isEmpty();
+    assertWithMessage("parsing warnings").that(compiler.getWarnings()).isEmpty();
 
-    assertEquals("parsing error: " + Joiner.on(", ").join(compiler.getErrors()),
-        0, compiler.getErrorCount());
-    assertEquals(
-        "parsing warning: " + Joiner.on(", ").join(compiler.getWarnings()), 0,
-        compiler.getWarningCount());
+    // Run ASTValidator
+    (new AstValidator(compiler)).validateRoot(compiler.getRoot());
 
-    // Create common parent of externs and ast; needed by Es6RewriteLetConst.
-    IR.block(externsRoot, astRoot).setIsSyntheticBlock(true);
+    DeclaredGlobalExternsOnWindow rewriteExterns =
+        new DeclaredGlobalExternsOnWindow(compiler);
+    List<PassFactory> passes = new ArrayList<>();
+    passes.add(makePassFactory("globalExternsOnWindow", rewriteExterns));
+    ProcessClosurePrimitives closurePass =
+        new ProcessClosurePrimitives(compiler, null, CheckLevel.ERROR, false);
+    passes.add(makePassFactory("ProcessClosurePrimitives", closurePass));
+    if (compilerOptions.needsTranspilationFrom(FeatureSet.TYPESCRIPT)) {
+      passes.add(makePassFactory("convertEs6TypedToEs6",
+              new Es6TypedToEs6Converter(compiler)));
+    }
+    if (compilerOptions.needsTranspilationFrom(FeatureSet.ES_NEXT)) {
+      // placeholder for a transpilation pass from ES_NEXT to ES8.
+      passes.add(setFeatureSet(FeatureSet.ES8));
+    }
+    if (compilerOptions.needsTranspilationFrom(FeatureSet.ES6)) {
+      TranspilationPasses.addEs2017Passes(passes);
+      TranspilationPasses.addEs2016Passes(passes);
+      TranspilationPasses.addEs6EarlyPasses(passes);
+      TranspilationPasses.addEs6PassesBeforeNTI(passes);
+      if (!compilerOptions.getTypeCheckEs6Natively()) {
+        TranspilationPasses.addEs6PassesAfterNTI(passes);
+        TranspilationPasses.addRewritePolyfillPass(passes);
+      }
+    }
+    passes.add(makePassFactory("GlobalTypeInfo", new GlobalTypeInfoCollector(compiler)));
+    passes.add(makePassFactory("NewTypeInference", new NewTypeInference(compiler)));
+    if (compilerOptions.needsTranspilationFrom(FeatureSet.ES6)
+        && compilerOptions.getTypeCheckEs6Natively()) {
+      TranspilationPasses.addEs6PassesAfterNTI(passes);
+      TranspilationPasses.addRewritePolyfillPass(passes);
+    }
 
-    GlobalTypeInfo symbolTable = new GlobalTypeInfo(compiler);
-    passes.add(makePassFactory("GlobalTypeInfo", symbolTable));
-    compiler.setSymbolTable(symbolTable);
-    passes.add(makePassFactory("NewTypeInference",
-            new NewTypeInference(compiler, options.closurePass)));
-
-    PhaseOptimizer phaseopt = new PhaseOptimizer(compiler, null, null);
+    PhaseOptimizer phaseopt = new PhaseOptimizer(compiler, null);
     phaseopt.consume(passes);
-    phaseopt.process(externsRoot, astRoot);
+    phaseopt.process(compiler.getExternsRoot(), compiler.getJsRoot());
   }
 
-  protected final void typeCheck(String js, DiagnosticType... warningKinds) {
-    typeCheck(DEFAULT_EXTERNS, js, warningKinds);
+  // Note: firstWarningKind is necessary to disambiguate the zero-diagnostic case.
+  protected final void typeCheck(
+      String js, DiagnosticType firstWarningKind, DiagnosticType... warningKinds) {
+    typeCheck(js, Diagnostic.wrap(firstWarningKind, warningKinds));
   }
 
-  protected final void typeCheckCustomExterns(
-      String externs, String js, DiagnosticType... warningKinds) {
-    typeCheck(externs, js, warningKinds);
+  protected final void typeCheck(String js, Diagnostic... diagnostics) {
+    if (this.mode.checkNative()) {
+      compilerOptions.setLanguageOut(LanguageMode.ECMASCRIPT_2015);
+      typeCheck(DEFAULT_EXTERNS, js, Diagnostic.unwrap(diagnostics, compilerOptions));
+    }
+    if (this.mode.checkTranspiled()) {
+      compilerOptions.setLanguageOut(LanguageMode.ECMASCRIPT5);
+      // TODO(sdh): stop allowing this option to be false, then we can eliminate this extra check.
+      compilerOptions.setTypeCheckEs6Natively(false);
+      typeCheck(DEFAULT_EXTERNS, js, Diagnostic.unwrap(diagnostics, compilerOptions));
+      compilerOptions.setTypeCheckEs6Natively(true);
+      typeCheck(DEFAULT_EXTERNS, js, Diagnostic.unwrap(diagnostics, compilerOptions));
+    }
   }
 
-  private final void typeCheck(
-      String externs, String js, DiagnosticType... warningKinds) {
+  private void typeCheck(String externs, String js, DiagnosticType... warningKinds) {
     parseAndTypeCheck(externs, js);
     JSError[] warnings = compiler.getWarnings();
     JSError[] errors = compiler.getErrors();
     String errorMessage =
-        "Expected warning of type:\n"
-        + "================================================================\n"
-        + Arrays.toString(warningKinds)
-        + "================================================================\n"
-        + "but found:\n"
-        + "----------------------------------------------------------------\n"
-        + Arrays.toString(warnings) + "\n"
-        + "----------------------------------------------------------------\n";
+        LINE_JOINER.join(
+            "Expected warning of type:",
+            "================================================================",
+            LINE_JOINER.join(warningKinds),
+            "================================================================",
+            "but found:",
+            "----------------------------------------------------------------",
+            LINE_JOINER.join(errors) + "\n" + LINE_JOINER.join(warnings),
+            "----------------------------------------------------------------\n");
     assertEquals(
         errorMessage + "Warning count", warningKinds.length, warnings.length + errors.length);
     for (JSError warning : warnings) {
-      assertTrue(
-          "Wrong warning type\n" + errorMessage,
-          Arrays.asList(warningKinds).contains(warning.getType()));
+      assertWithMessage("Wrong warning type\n" + errorMessage)
+          .that(warningKinds)
+          .asList()
+          .contains(warning.getType());
     }
     for (JSError error : errors) {
-      assertTrue(
-          "Wrong warning type\n" + errorMessage,
-          Arrays.asList(warningKinds).contains(error.getType()));
+      assertWithMessage("Wrong warning type\n" + errorMessage)
+          .that(warningKinds)
+          .asList()
+          .contains(error.getType());
     }
+  }
+
+  protected final void typeCheckCustomExterns(
+      String externs, String js, DiagnosticType... warningKinds) {
+    if (this.mode.checkNative()) {
+      compilerOptions.setLanguageOut(LanguageMode.ECMASCRIPT_2015);
+      typeCheck(externs, js, warningKinds);
+    }
+    if (this.mode.checkTranspiled()) {
+      compilerOptions.setLanguageOut(LanguageMode.ECMASCRIPT5);
+      // TODO(sdh): stop allowing this option to be false, then we can eliminate this extra check.
+      compilerOptions.setTypeCheckEs6Natively(false);
+      typeCheck(externs, js, warningKinds);
+      compilerOptions.setTypeCheckEs6Natively(true);
+      typeCheck(externs, js, warningKinds);
+    }
+  }
+
+  // Used only in the cases where we provide extra details in the error message.
+  // Don't use in other cases.
+  // It is deliberately less general; no custom externs and only a single
+  // warning per test.
+  protected final void typeCheckMessageContents(
+      String js, DiagnosticType warningKind, String warningMsg) {
+    if (this.mode.checkNative()) {
+      compilerOptions.setLanguageOut(LanguageMode.ECMASCRIPT_2015);
+      typeCheckMessageContentsHelper(js, warningKind, warningMsg);
+    }
+    if (this.mode.checkTranspiled()) {
+      compilerOptions.setLanguageOut(LanguageMode.ECMASCRIPT5);
+      // TODO(sdh): stop allowing this option to be false, then we can eliminate this extra check.
+      compilerOptions.setTypeCheckEs6Natively(false);
+      typeCheckMessageContentsHelper(js, warningKind, warningMsg);
+      compilerOptions.setTypeCheckEs6Natively(true);
+      typeCheckMessageContentsHelper(js, warningKind, warningMsg);
+    }
+  }
+
+  private void typeCheckMessageContentsHelper(
+      String js, DiagnosticType warningKind, String warningMsg) {
+    parseAndTypeCheck(DEFAULT_EXTERNS, js);
+    JSError[] warnings = compiler.getWarnings();
+    JSError[] errors = compiler.getErrors();
+    assertThat(errors).isEmpty();
+    assertThat(warnings).hasLength(1);
+    JSError warning = warnings[0];
+    assertError(warning).hasType(warningKind);
+    assertError(warning).hasMessage(warningMsg);
+  }
+
+  /** Abstraction over DiagnosticType that allows warnings to be expected conditionally. */
+  protected abstract static class Diagnostic implements Function<CompilerOptions, DiagnosticType> {
+
+    protected static Diagnostic of(final DiagnosticType type) {
+      return new Diagnostic() {
+        @Override
+        public DiagnosticType apply(CompilerOptions unused) {
+          return type;
+        }
+      };
+    }
+
+    protected static Diagnostic[] wrap(DiagnosticType firstType, DiagnosticType[] types) {
+      Diagnostic[] out = new Diagnostic[types.length + 1];
+      out[0] = of(firstType);
+      for (int i = 0; i < types.length; i++) {
+        out[i + 1] = of(types[i]);
+      }
+      return out;
+    }
+
+    protected static DiagnosticType[] unwrap(Diagnostic[] diagnostics, CompilerOptions options) {
+      List<DiagnosticType> out = new ArrayList<>();
+      for (Diagnostic diagnostic : diagnostics) {
+        DiagnosticType unwrapped = diagnostic.apply(options);
+        if (unwrapped != null) {
+          out.add(unwrapped);
+        }
+      }
+      return out.toArray(new DiagnosticType[0]);
+    }
+  }
+
+  /** A warning that is only expected when type checking ES6 natively. */
+  protected static Diagnostic nativeEs6Only(final DiagnosticType type) {
+    return new Diagnostic() {
+      @Override
+      public DiagnosticType apply(CompilerOptions options) {
+        return options.needsTranspilationFrom(FeatureSet.ES6) && options.getTypeCheckEs6Natively()
+            ? type : null;
+      }
+    };
+  }
+
+  /** A warning that is only expected when not type checking ES6 natively. */
+  protected static Diagnostic fullyTranspiledOnly(final DiagnosticType type) {
+    return new Diagnostic() {
+      @Override
+      public DiagnosticType apply(CompilerOptions options) {
+        return options.needsTranspilationFrom(FeatureSet.ES6) && !options.getTypeCheckEs6Natively()
+            ? type : null;
+      }
+    };
   }
 }

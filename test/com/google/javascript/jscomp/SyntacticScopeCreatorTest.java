@@ -18,7 +18,6 @@ package com.google.javascript.jscomp;
 
 import com.google.javascript.rhino.Node;
 import com.google.javascript.rhino.Token;
-
 import junit.framework.TestCase;
 
 /**
@@ -27,23 +26,37 @@ import junit.framework.TestCase;
  */
 public final class SyntacticScopeCreatorTest extends TestCase {
 
+  private Compiler compiler;
+  private SyntacticScopeCreator scopeCreator;
+
+  @Override
+  protected void setUp() {
+    compiler = new Compiler();
+    CompilerOptions options = new CompilerOptions();
+    compiler.initOptions(options);
+    scopeCreator = SyntacticScopeCreator.makeUntyped(compiler);
+  }
+
   /**
    * Helper to create a top-level scope from a JavaScript string
    */
-  private static Scope getScope(String js) {
-    Compiler compiler = new Compiler();
+  private Scope getScope(String js) {
+    return (Scope) scopeCreator.createScope(getRoot(js), null);
+  }
+
+  private Node getRoot(String js) {
     Node root = compiler.parseTestCode(js);
     assertEquals(0, compiler.getErrorCount());
-    Scope scope = SyntacticScopeCreator.makeUntyped(compiler).createScope(root, null);
-    return scope;
+    return root;
   }
 
   public void testFunctionScope() {
+    compiler.getOptions().setLanguageIn(CompilerOptions.LanguageMode.ECMASCRIPT_2015);
     Scope scope = getScope("function foo() {}\n" +
-                           "var x = function bar(a1) {};" +
-                           "[function bar2() { var y; }];" +
-                           "if (true) { function z() {} }"
-                           );
+        "var x = function bar(a1) {};" +
+        "[function bar2() { var y; }];" +
+        "if (true) { function z() {} }");
+
     assertTrue(scope.isDeclared("foo", false));
     assertTrue(scope.isDeclared("x", false));
     assertTrue(scope.isDeclared("z", false));
@@ -56,21 +69,40 @@ public final class SyntacticScopeCreatorTest extends TestCase {
     assertFalse(scope.isDeclared("", false));
   }
 
-  public void testScopeRootNode() {
-    String js = "function foo() {\n" +
-        " var x = 10;" +
-        "}";
-    Compiler compiler = new Compiler();
-    Node root = compiler.parseTestCode(js);
-    assertEquals(0, compiler.getErrorCount());
+  public void testNestedFunctionScope() {
+    Node root = getRoot("function f(x) { function g(y) {} }");
+    Scope globalScope = (Scope) scopeCreator.createScope(root, null);
 
-    Scope globalScope = SyntacticScopeCreator.makeUntyped(compiler).createScope(root, null);
+    Node fNode = root.getFirstChild();
+    Scope outerFScope = (Scope) scopeCreator.createScope(fNode, globalScope);
+    assertTrue(outerFScope.isDeclared("x", false));
+
+    Node innerFNode = fNode.getLastChild().getFirstChild();
+    Scope innerFScope = (Scope) scopeCreator.createScope(innerFNode, outerFScope);
+    assertFalse(innerFScope.isDeclared("x", false));
+    assertTrue(innerFScope.isDeclared("y", false));
+  }
+
+  public void testScopeRootNode() {
+    Node root = getRoot("function foo() { var x = 10; }");
+
+    Scope globalScope = (Scope) scopeCreator.createScope(root, null);
     assertEquals(root, globalScope.getRootNode());
 
     Node fooNode = root.getFirstChild();
-    assertEquals(Token.FUNCTION, fooNode.getType());
-    Scope fooScope = SyntacticScopeCreator.makeUntyped(compiler).createScope(fooNode, null);
+    assertEquals(Token.FUNCTION, fooNode.getToken());
+    Scope fooScope = (Scope) scopeCreator.createScope(fooNode, globalScope);
     assertEquals(fooNode, fooScope.getRootNode());
     assertTrue(fooScope.isDeclared("x", false));
+  }
+
+  public void testFunctionExpressionInForLoopInitializer() {
+    Node root = getRoot("for (function foo() {};;) {}");
+    Scope globalScope = (Scope) scopeCreator.createScope(root, null);
+    assertFalse(globalScope.isDeclared("foo", false));
+
+    Node fNode = root.getFirstFirstChild();
+    Scope fScope = (Scope) scopeCreator.createScope(fNode, globalScope);
+    assertTrue(fScope.isDeclared("foo", false));
   }
 }

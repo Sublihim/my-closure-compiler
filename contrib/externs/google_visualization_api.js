@@ -421,6 +421,7 @@ google.visualization.DataTable.prototype.sort = function(sortColumns) {};
 
 /**
  * @return {string} JSON representation.
+ * @override
  */
 google.visualization.DataTable.prototype.toJSON = function() {};
 
@@ -573,6 +574,16 @@ google.visualization.events = {};
  * @return {Object}
  */
 google.visualization.events.addListener =
+    function(eventSource, eventName, eventHandler) {};
+
+
+/**
+ * @param {!Object} eventSource
+ * @param {string} eventName
+ * @param {!Function} eventHandler
+ * @return {!Object}
+ */
+google.visualization.events.addOneTimeListener =
     function(eventSource, eventName, eventHandler) {};
 
 
@@ -867,6 +878,7 @@ google.visualization.DataView.prototype.toDataTable = function() {};
 
 /**
  * @return {string} JSON representation.
+ * @override
  */
 google.visualization.DataView.prototype.toJSON = function() {};
 
@@ -1956,6 +1968,39 @@ google.visualization.Table.prototype.setSelection = function(opt_selection) {};
  * @constructor
  * @implements {google.visualization.IChart}
  */
+google.visualization.Timeline = function(container) {};
+
+
+/**
+ * @override
+ */
+google.visualization.Timeline.prototype.clearChart = function() {};
+
+
+/**
+ * @override
+ */
+google.visualization.Timeline.prototype.draw = function(data, opt_options) {};
+
+
+/**
+ * @override
+ */
+google.visualization.Timeline.prototype.getSelection = function() {};
+
+
+/**
+ * @override
+ */
+google.visualization.Timeline.prototype.setSelection = function(opt_selection) {};
+
+
+
+/**
+ * @param {Node} container
+ * @constructor
+ * @implements {google.visualization.IChart}
+ */
 google.visualization.TreeMap = function(container) {};
 
 
@@ -2008,6 +2053,7 @@ google.visualization.ChartWrapper.prototype.draw = function(opt_container) {};
 
 /**
  * @return {string} JSON representation.
+ * @override
  */
 google.visualization.ChartWrapper.prototype.toJSON = function() {};
 
@@ -2178,6 +2224,7 @@ google.visualization.ControlWrapper.prototype.draw = function(opt_container) {};
 
 /**
  * @return {string} JSON representation.
+ * @override
  */
 google.visualization.ControlWrapper.prototype.toJSON = function() {};
 

@@ -40,10 +40,8 @@ import static com.google.javascript.jscomp.parsing.JsDocToken.STAR;
 import static com.google.javascript.jscomp.parsing.JsDocToken.STRING;
 
 import com.google.common.collect.ImmutableList;
-
-import junit.framework.TestCase;
-
 import java.util.List;
+import junit.framework.TestCase;
 
 /**
  * Tests for {@link JsDocTokenStream}.
@@ -78,22 +76,6 @@ public final class JsDocTokenStreamTest extends TestCase {
     testJSDocTokenStream("@param {Array.<string|   null>}  ", tokens, strings);
     testJSDocTokenStream("@param {Array.<string|null>}", tokens, strings);
     testJSDocTokenStream("     @param { Array .< string |null > } ",
-        tokens, strings);
-  }
-
-  public void testJsDocTokenization3() throws Exception {
-    List<JsDocToken> tokens = ImmutableList.of(
-        ANNOTATION, LEFT_CURLY, STRING, LEFT_ANGLE, STRING, PIPE, STRING, RIGHT_ANGLE, RIGHT_CURLY);
-    List<String> strings = ImmutableList.of("param", "Array", "string", "null");
-    testJSDocTokenStream("@param {Array.<string||null>}", tokens, strings);
-    testJSDocTokenStream("@param {Array.< string || null> }", tokens, strings);
-    testJSDocTokenStream("@param {Array.<string || null >  } ",
-        tokens, strings);
-    testJSDocTokenStream("@param {Array .<string   ||null>}", tokens, strings);
-    testJSDocTokenStream("@param {Array.< string||null>}", tokens, strings);
-    testJSDocTokenStream("@param {  Array.<string||null>}", tokens, strings);
-    testJSDocTokenStream(" @param   {Array.<string||null>}", tokens, strings);
-    testJSDocTokenStream("@param   {   Array.<string|| null> }",
         tokens, strings);
   }
 
@@ -285,8 +267,8 @@ public final class JsDocTokenStreamTest extends TestCase {
     testJSDocTokenStream("@param {Object=  }*/", tokens, strings);
   }
 
-  private void testJSDocTokenStream(String comment, List<JsDocToken> tokens,
-      List<String> strings) {
+  private static void testJSDocTokenStream(
+      String comment, List<JsDocToken> tokens, List<String> strings) {
     JsDocTokenStream stream = new JsDocTokenStream(comment, 0);
     int stringsIndex = 0;
     for (JsDocToken token : tokens) {

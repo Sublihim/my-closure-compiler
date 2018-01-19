@@ -15,38 +15,63 @@
  */
 package com.google.javascript.jscomp.deps;
 
+import com.google.common.base.Strings;
 import com.google.common.io.CharSource;
 import com.google.common.io.Files;
-
+import com.google.javascript.jscomp.transpile.TranspileResult;
+import com.google.javascript.jscomp.transpile.Transpiler;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
-
+import java.nio.file.Paths;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * A utility class to assist in creating JS bundle files.
  */
 public final class ClosureBundler {
-  private boolean useEval = false;
-  private String sourceUrl = null;
-  private boolean useStrict = false;
+
+  private final Transpiler transpiler;
+
+  private final EvalMode mode;
+  private final String sourceUrl;
+  private final String path;
+
+  // TODO(sdh): This cache should be moved out into a higher level, but is
+  // currently required due to the API that source maps must be accessible
+  // via just a path (and not the file contents).
+  private final Map<String, String> sourceMapCache;
 
   public ClosureBundler() {
+    this(Transpiler.NULL);
+  }
+
+  public ClosureBundler(Transpiler transpiler) {
+    this(transpiler, EvalMode.NORMAL, null, "unknown_source",
+        new ConcurrentHashMap<String, String>());
+  }
+
+  private ClosureBundler(Transpiler transpiler, EvalMode mode, String sourceUrl, String path,
+      Map<String, String> sourceMapCache) {
+    this.transpiler = transpiler;
+    this.mode = mode;
+    this.sourceUrl = sourceUrl;
+    this.path = path;
+    this.sourceMapCache = sourceMapCache;
   }
 
   public final ClosureBundler useEval(boolean useEval) {
-    this.useEval = useEval;
-    return this;
+    EvalMode newMode = useEval ? EvalMode.EVAL : EvalMode.NORMAL;
+    return new ClosureBundler(transpiler, newMode, sourceUrl, path, sourceMapCache);
   }
 
-  public final ClosureBundler forceStrict(boolean useStrict) {
-    this.useStrict = useStrict;
-    return this;
+  public final ClosureBundler withSourceUrl(String newSourceUrl) {
+    return new ClosureBundler(transpiler, mode, newSourceUrl, path, sourceMapCache);
   }
 
-  public final ClosureBundler withSourceUrl(String sourceUrl) {
-    this.sourceUrl = sourceUrl;
-    return this;
+  public final ClosureBundler withPath(String newPath) {
+    return new ClosureBundler(transpiler, mode, sourceUrl, newPath, sourceMapCache);
   }
 
   /** Append the contents of the string to the supplied appendable. */
@@ -74,83 +99,105 @@ public final class ClosureBundler {
   }
 
   /** Append the contents of the CharSource to the supplied appendable. */
-  private void appendTo(
+  public void appendTo(
       Appendable out,
       DependencyInfo info,
       CharSource content) throws IOException {
     if (info.isModule()) {
-      appendGoogModule(out, content);
+      mode.appendGoogModule(transpile(content.read()), out, sourceUrl);
     } else {
-      appendTraditional(out, content);
+      mode.appendTraditional(transpile(content.read()), out, sourceUrl);
     }
   }
 
-  private void appendTraditional(Appendable out, CharSource contents)
-      throws IOException {
-    if (useEval) {
-      out.append("(0,eval(\"");
-      if (useStrict) {
-        appendEscaped(out, "'use strict';");
+  public void appendRuntimeTo(Appendable out) throws IOException {
+    String runtime = transpiler.runtime();
+    if (!runtime.isEmpty()) {
+      mode.appendTraditional(runtime, out, null);
+    }
+  }
+
+  /**
+   * Subclasses that need to provide a source map for any transformed input can return it with this
+   * method.
+   */
+  public String getSourceMap(String path) {
+    return Strings.nullToEmpty(sourceMapCache.get(path));
+  }
+
+  private String transpile(String s) {
+    TranspileResult result = transpiler.transpile(Paths.get(path), s);
+    sourceMapCache.put(path, result.sourceMap());
+    return result.transpiled();
+  }
+
+  private enum EvalMode {
+    EVAL {
+      @Override
+      void appendTraditional(String s, Appendable out, String sourceUrl) throws IOException {
+        out.append("(0,eval(\"");
+        EscapeMode.ESCAPED.append(s, out);
+        appendSourceUrl(out, EscapeMode.ESCAPED, sourceUrl);
+        out.append("\"));\n");
       }
-      append(out, Mode.ESCAPED, contents);
-      appendSourceUrl(out, Mode.ESCAPED);
-      out.append("\"));");
-    } else {
-      out.append(contents.read());
-      appendSourceUrl(out, Mode.NORMAL);
-    }
+
+      @Override
+      void appendGoogModule(String s, Appendable out, String sourceUrl) throws IOException {
+        out.append("goog.loadModule(\"");
+        EscapeMode.ESCAPED.append(s, out);
+        appendSourceUrl(out, EscapeMode.ESCAPED, sourceUrl);
+        out.append("\");\n");
+      }
+    },
+    NORMAL {
+      @Override
+      void appendTraditional(String s, Appendable out, String sourceUrl) throws IOException {
+        EscapeMode.NORMAL.append(s, out);
+        appendSourceUrl(out, EscapeMode.NORMAL, sourceUrl);
+      }
+
+      @Override
+      void appendGoogModule(String s, Appendable out, String sourceUrl) throws IOException {
+        // add the prefix on the first line so the line numbers aren't affected.
+        out.append(
+            "goog.loadModule(function(exports) {"
+            + "'use strict';");
+        EscapeMode.NORMAL.append(s, out);
+        out.append(
+            "\n" // terminate any trailing single line comment.
+            + ";" // terminate any trailing expression.
+            + "return exports;});\n");
+        appendSourceUrl(out, EscapeMode.NORMAL, sourceUrl);
+      }
+    };
+
+    abstract void appendTraditional(String s, Appendable out, String sourceUrl) throws IOException;
+    abstract void appendGoogModule(String s, Appendable out, String sourceUrl) throws IOException;
   }
 
-  private void appendGoogModule(Appendable out, CharSource contents)
+  private enum EscapeMode {
+    ESCAPED {
+      @Override void append(String s, Appendable out) throws IOException {
+        out.append(SourceCodeEscapers.javascriptEscaper().escape(s));
+      }
+    },
+    NORMAL {
+      @Override void append(String s, Appendable out) throws IOException {
+        out.append(s);
+      }
+    };
+
+    abstract void append(String s, Appendable out) throws IOException;
+  }
+
+  private static void appendSourceUrl(Appendable out, EscapeMode mode, String sourceUrl)
       throws IOException {
-    if (useEval) {
-      out.append("goog.loadModule(\"");
-      append(out, Mode.ESCAPED, contents);
-      appendSourceUrl(out, Mode.ESCAPED);
-      out.append("\");");
-    } else {
-      // add the prefix on the first line so the line numbers aren't affected.
-      out.append(
-          "goog.loadModule(function(exports) {"
-          + "'use strict';");
-      append(out, Mode.NORMAL, contents);
-      out.append(
-          "\n" // terminate any trailing single line comment.
-          + ";" // terminate any trailing expression.
-          + "return exports;});\n");
-      appendSourceUrl(out, Mode.NORMAL);
+    if (sourceUrl == null) {
+      return;
     }
-  }
-
-  private enum Mode {
-    ESCAPED,
-    NORMAL,
-  }
-
-  private void appendEscaped(Appendable out, String s) throws IOException {
-    out.append(SourceCodeEscapers.javascriptEscaper().escape(s));
-  }
-
-  private void append(Appendable out, Mode mode, String s) throws IOException {
-    if (mode == Mode.ESCAPED) {
-      appendEscaped(out, s);
-    } else {
-      out.append(s);
-    }
-  }
-
-  private void append(Appendable out, Mode mode, CharSource cs)
-      throws IOException {
-    append(out, mode, cs.read());
-  }
-
-  private void appendSourceUrl(Appendable out, Mode mode)
-      throws IOException {
-    if (sourceUrl != null) {
-      append(out, mode, "\n//# sourceURL=");
-      append(out, mode, sourceUrl);
-      append(out, mode, "\n");
-    }
+    String toAppend = "\n//# sourceURL=" + sourceUrl + "\n";
+    // Don't go through #append. That method relies on #transformInput,
+    // but source URLs generally aren't valid JS inputs.
+    mode.append(toAppend, out);
   }
 }
-

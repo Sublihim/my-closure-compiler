@@ -16,18 +16,37 @@
 
 package com.google.javascript.jscomp.newtypes;
 
+import static com.google.common.base.Preconditions.checkState;
+
+import com.google.javascript.rhino.Node;
+
 /**
  *
  * @author blickly@google.com (Ben Lickly)
  * @author dimvar@google.com (Dimitris Vardoulakis)
  */
 public final class NamespaceLit extends Namespace {
-  // collect namespaces during CNT
-  // careful w/ inferred vs declared props on namespaces (for otherprops)
+  // For when window is used as a namespace
+  private NominalType window = null;
 
-  public JSType toJSType() {
-    ObjectType objs = ObjectType.makeObjectType(
-        null, otherProps, null, false, ObjectKind.UNRESTRICTED);
-    return withNamedTypes(objs);
+  public NamespaceLit(JSTypes commonTypes, String name, Node defSite) {
+    super(commonTypes, name, defSite);
+  }
+
+  NominalType getWindowType() {
+    return this.window;
+  }
+
+  public void setWindowType(NominalType window) {
+    this.window = window;
+  }
+
+  @Override
+  protected JSType computeJSType() {
+    checkState(this.namespaceType == null);
+    return JSType.fromObjectType(ObjectType.makeObjectType(
+        this.commonTypes,
+        this.window == null ? this.commonTypes.getLiteralObjNominalType() : this.window,
+        null, null, this, false, ObjectKind.UNRESTRICTED));
   }
 }

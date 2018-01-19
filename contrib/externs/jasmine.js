@@ -181,6 +181,13 @@ jasmine.Matchers.prototype.toThrow = function(opt_expected) {};
 
 
 /**
+ * @param {Object} value
+ * @return {string}
+ */
+jasmine.pp = function(value) {};
+
+
+/**
  * @param {!Object} clazz
  * @return {!jasmine.Matchers}
  */
@@ -402,7 +409,7 @@ function expect(expectedValue) {}
 
 /**
  * Provided by angular-mocks.js.
- * @param {...(Function|Array.<(string,Function)>)} var_args
+ * @param {...(Function|Array<string|Function>)} var_args
  */
 function inject(var_args) {}
 
@@ -423,7 +430,7 @@ function iit(description, handler) {}
 
 /**
  * Provided by angular-mocks.js.
- * @param {...(string|Function|Array.<(string,Function)>)} var_args
+ * @param {...(string|Function|Array<string|Function>)} var_args
  * @suppress {checkTypes}
  */
 function module(var_args) {}

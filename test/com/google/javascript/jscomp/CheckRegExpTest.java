@@ -16,6 +16,8 @@
 
 package com.google.javascript.jscomp;
 
+import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
+
 /**
  * @author johnlenz@google.com (John Lenz)
  */
@@ -23,19 +25,28 @@ public final class CheckRegExpTest extends CompilerTestCase {
   CheckRegExp last = null;
 
   public CheckRegExpTest() {
-    super("var RegExp;", true);
+    super("var RegExp;");
+  }
+
+  @Override
+  protected CompilerOptions getOptions(CompilerOptions options) {
+    super.getOptions(options);
+    options.setWarningLevel(DiagnosticGroups.CHECK_REGEXP, CheckLevel.WARNING);
+    return options;
   }
 
   @Override
   protected CompilerPass getProcessor(Compiler compiler) {
-    compiler.options.setWarningLevel(
-        DiagnosticGroups.CHECK_REGEXP, CheckLevel.WARNING);
     last = new CheckRegExp(compiler);
     return last;
   }
 
   private void testReference(String code, boolean expected) {
-    testSame(code, (expected) ? CheckRegExp.REGEXP_REFERENCE : null);
+    if (expected) {
+      testWarning(code, CheckRegExp.REGEXP_REFERENCE);
+    } else {
+      testSame(code);
+    }
     assertEquals(expected, last.isGlobalRegExpPropertiesUsed());
   }
 
@@ -80,18 +91,34 @@ public final class CheckRegExpTest extends CompilerTestCase {
     testReference("f(RegExp);", true);
     testReference("new f(RegExp);", true);
     testReference("var x = RegExp; x.test()", true);
+    setAcceptedLanguage(LanguageMode.ECMASCRIPT_2015);
+    testReference("let x = RegExp;", true);
+    testReference("const x = RegExp;", true);
 
     // No RegExp reference is OK.
     testReference("var x;", false);
 
     // Local RegExp is OK.
     testReference("function f() {var RegExp; RegExp.test();}", false);
+    testReference("function f() {let RegExp; RegExp.test();}", false);
+    testReference("function *gen() {var RegExp; yield RegExp.test();}", false);
 
     // Property named 'RegExp' is OK.
     testReference("var x = {RegExp: {}}; x.RegExp.$1;", false);
+
+    // Class property is also OK.
+    setAcceptedLanguage(LanguageMode.ECMASCRIPT_2015);
+    testReference(lines(
+        "class x {",
+        "  constructor() {this.RegExp = {};}",
+        "  method() {",
+        "    this.RegExp.$1;",
+        "    this.RegExp.test();",
+        "  }",
+        "}"), false);
   }
 
   public void testInvalidRange() {
-    testSame("\"asdf\".match(/[z-a]/)", CheckRegExp.MALFORMED_REGEXP);
+    this.testWarning("\"asdf\".match(/[z-a]/)", CheckRegExp.MALFORMED_REGEXP);
   }
 }

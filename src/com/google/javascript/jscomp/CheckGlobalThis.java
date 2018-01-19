@@ -105,7 +105,7 @@ final class CheckGlobalThis implements Callback {
       // function a() {} // or
       // a.x = function() {}; // or
       // var a = {x: function() {}};
-      int pType = parent.getType();
+      Token pType = parent.getToken();
       if (!(pType == Token.BLOCK ||
             pType == Token.SCRIPT ||
             pType == Token.NAME ||
@@ -117,9 +117,9 @@ final class CheckGlobalThis implements Callback {
       }
 
       // Don't traverse functions that are getting lent to a prototype.
-      Node gramps = parent.getParent();
+      Node grandparent = parent.getParent();
       if (NodeUtil.isObjectLitKey(parent)) {
-        JSDocInfo maybeLends = gramps.getJSDocInfo();
+        JSDocInfo maybeLends = grandparent.getJSDocInfo();
         if (maybeLends != null &&
             maybeLends.getLendsName() != null &&
             maybeLends.getLendsName().endsWith(".prototype")) {

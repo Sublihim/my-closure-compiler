@@ -95,6 +95,7 @@ public enum TokenType {
   PLUS("+"),
   MINUS("-"),
   STAR("*"),
+  STAR_STAR("**"),
   PERCENT("%"),
   PLUS_PLUS("++"),
   MINUS_MINUS("--"),
@@ -114,6 +115,7 @@ public enum TokenType {
   PLUS_EQUAL("+="),
   MINUS_EQUAL("-="),
   STAR_EQUAL("*="),
+  STAR_STAR_EQUAL("**="),
   PERCENT_EQUAL("%="),
   LEFT_SHIFT_EQUAL("<<="),
   RIGHT_SHIFT_EQUAL(">>="),
@@ -144,6 +146,12 @@ public enum TokenType {
   TEMPLATE_MIDDLE("template middle"),
   TEMPLATE_TAIL("template tail"),
   NO_SUBSTITUTION_TEMPLATE("no substitution template"),
+
+  // TypeScript
+  TYPE,
+  DECLARE,
+  MODULE,
+  NAMESPACE
   ;
 
   public final String value;

@@ -16,6 +16,7 @@
 
 package com.google.javascript.jscomp;
 
+import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
 
 /**
  * Tests for {@link ObjectPropertyStringPreprocess}
@@ -33,8 +34,9 @@ public final class ObjectPropertyStringPreprocessTest extends CompilerTestCase {
   }
 
   @Override
-  protected void setUp() {
-    super.allowExternsChanges(true);
+  protected void setUp() throws Exception {
+    super.setUp();
+    allowExternsChanges();
   }
 
   public void testDeclaration() {
@@ -65,6 +67,24 @@ public final class ObjectPropertyStringPreprocessTest extends CompilerTestCase {
 
   public void testStringLiteralExpectedError() {
     testError("new goog.testing.ObjectPropertyString(foo, bar)",
+        ObjectPropertyStringPreprocess.STRING_LITERAL_EXPECTED_ERROR);
+  }
+
+  public void testTemplateStringError() {
+    setAcceptedLanguage(LanguageMode.ECMASCRIPT_2015);
+    testError("new goog.testing.ObjectPropertyString(foo, `bar`)",
+        ObjectPropertyStringPreprocess.STRING_LITERAL_EXPECTED_ERROR);
+    testError("new goog.testing.ObjectPropertyString(foo, `${A}bar`)",
+        ObjectPropertyStringPreprocess.STRING_LITERAL_EXPECTED_ERROR);
+    testError("new goog.testing.ObjectPropertyString(foo, `bar${A}`)",
+        ObjectPropertyStringPreprocess.STRING_LITERAL_EXPECTED_ERROR);
+  }
+
+  public void testTaggedTemplateError() {
+    setAcceptedLanguage(LanguageMode.ECMASCRIPT_2015);
+    testError("new goog.testing.ObjectPropertyString(foo, tagged`bar`)",
+        ObjectPropertyStringPreprocess.STRING_LITERAL_EXPECTED_ERROR);
+    testError("new goog.testing.ObjectPropertyString(foo, tagged`${Foo}bar`)",
         ObjectPropertyStringPreprocess.STRING_LITERAL_EXPECTED_ERROR);
   }
 }

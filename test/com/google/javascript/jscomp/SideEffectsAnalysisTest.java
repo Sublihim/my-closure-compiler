@@ -17,6 +17,7 @@
 package com.google.javascript.jscomp;
 
 import com.google.common.collect.ImmutableSet;
+import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
 import com.google.javascript.jscomp.NodeTraversal.AbstractPostOrderCallback;
 import com.google.javascript.jscomp.SideEffectsAnalysis.LocationAbstractionMode;
 import com.google.javascript.rhino.Node;
@@ -35,14 +36,10 @@ public final class SideEffectsAnalysisTest extends CompilerTestCase {
 
   SideEffectsAnalysis currentAnalysis = null;
 
-  Compiler currentCompiler = null;
-
   Node currentJsRoot = null;
 
   @Override
   protected CompilerPass getProcessor(final Compiler compiler) {
-    currentCompiler = compiler;
-
     currentAnalysis = new SideEffectsAnalysis(compiler,
         currentLocationAbstractionIdentifier);
 
@@ -51,8 +48,7 @@ public final class SideEffectsAnalysisTest extends CompilerTestCase {
       @Override
       public void process(Node externs, Node root) {
 
-        if (currentLocationAbstractionIdentifier ==
-          LocationAbstractionMode.VISIBILITY_BASED) {
+        if (currentLocationAbstractionIdentifier == LocationAbstractionMode.VISIBILITY_BASED) {
 
           // Run var when using the visibility abstraction
           // because it is unsound if it fails.
@@ -69,11 +65,10 @@ public final class SideEffectsAnalysisTest extends CompilerTestCase {
   }
 
   @Override
-  public void setUp() throws Exception {
+  protected void setUp() throws Exception {
     super.setUp();
 
     currentAnalysis = null;
-    currentCompiler = null;
   }
 
   public void testDegenerateSafeMoves() {
@@ -109,111 +104,111 @@ public final class SideEffectsAnalysisTest extends CompilerTestCase {
     assertSafeMoveVisibility("var x; src: x++; env: 1; dest: 3;");
 
     // Source references global, env changes local
-    assertSafeMoveVisibility(
-        "var x;" +
-        "function f(){" +
-          "var y;" +
-          "src: x;" +
-          "env: y++;" +
-          "dest: 3;" +
-          "}");
+    assertSafeMoveVisibility(lines(
+        "var x;",
+        "function f(){",
+        "  var y;",
+        "  src: x;",
+        "  env: y++;",
+        "  dest: 3;",
+        "}"));
 
     // Source changes global, env refs local
-    assertSafeMoveVisibility(
-        "var x;" +
-        "function f(){" +
-          "var y;" +
-          "src: x++;" +
-          "env: y;" +
-          "dest: 3;" +
-          "}");
+    assertSafeMoveVisibility(lines(
+        "var x;",
+        "function f(){",
+        "  var y;",
+        "  src: x++;",
+        "  env: y;",
+        "  dest: 3;",
+        "}"));
 
     // Source references global, env changes local with shadowing
-    assertSafeMoveVisibility(
-        "var x;" +
-        "var y;" +
-        "function f(){" +
-          "var y;" +
-          "src: x;" +
-          "env: y++;" +
-          "dest: 3;" +
-          "}");
+    assertSafeMoveVisibility(lines(
+        "var x;",
+        "var y;",
+        "function f(){",
+        "  var y;",
+        "  src: x;",
+        "  env: y++;",
+        "  dest: 3;",
+        "}"));
 
     // Source changes global, env refs local with shadowing
-    assertSafeMoveVisibility(
-        "var x;" +
-        "var y;" +
-        "function f(){" +
-          "var y;" +
-          "src: x++;" +
-          "env: y;" +
-          "dest: 3;" +
-          "}");
+    assertSafeMoveVisibility(lines(
+        "var x;",
+        "var y;",
+        "function f(){",
+        "  var y;",
+        "  src: x++;",
+        "  env: y;",
+        "  dest: 3;",
+        "}"));
 
 
     // Source references captured local, env changes local
-    assertSafeMoveVisibility(
-        "function f(){" +
-          "var x;" +
-          "var y;" +
-          "src: x;" +
-          "env: y++;" +
-          "dest: 3;" +
-          "function inner() {" +
-            "x" +
-          "}" +
-         "}");
+    assertSafeMoveVisibility(lines(
+        "function f(){",
+        "  var x;",
+        "  var y;",
+        "  src: x;",
+        "  env: y++;",
+        "  dest: 3;",
+        "  function inner() {",
+        "    x",
+        "  }",
+        "}"));
 
     // Source changes captured local, env refs local
-    assertSafeMoveVisibility(
-        "function f(){" +
-          "var x;" +
-          "var y;" +
-          "src: x++;" +
-          "env: y;" +
-          "dest: 3;" +
-          "function inner() {" +
-            "x" +
-          "}" +
-        "}");
+    assertSafeMoveVisibility(lines(
+        "function f(){",
+        "  var x;",
+        "  var y;",
+        "  src: x++;",
+        "  env: y;",
+        "  dest: 3;",
+        "  function inner() {",
+        "    x",
+        "  }",
+        "}"));
 
     // Source references heap, env changes local
-    assertSafeMoveVisibility(
-        "var x = {};" +
-        "function f(){" +
-          "var y;" +
-          "src: x.a;" +
-          "env: y++;" +
-          "dest: 3;" +
-          "}");
+    assertSafeMoveVisibility(lines(
+        "var x = {};",
+        "function f(){",
+        "  var y;",
+        "  src: x.a;",
+        "  env: y++;",
+        "  dest: 3;",
+        "}"));
 
     // Source changes heap, env refs local
-    assertSafeMoveVisibility(
-        "var x = {};" +
-        "function f(){" +
-          "var y;" +
-          "src: x.a++;" +
-          "env: y;" +
-          "dest: 3;" +
-          "}");
+    assertSafeMoveVisibility(lines(
+        "var x = {};",
+        "function f(){",
+        "  var y;",
+        "  src: x.a++;",
+        "  env: y;",
+        "  dest: 3;",
+        "}"));
 
     // MOD in function expressions shouldn't count
-    assertSafeMoveVisibility(
-        "var x = {};" +
-        "src: x.a;" +
-        "env: (function() {" +
-          "x.a++;" +
-        "});" +
-        "dest: 3;");
+    assertSafeMoveVisibility(lines(
+        "var x = {};",
+        "src: x.a;",
+        "env: (function() {",
+        "  x.a++;",
+        "});",
+        "dest: 3;"));
 
     // REF in function expressions shouldn't count
-    assertSafeMoveVisibility(
-        "var x = {};" +
-        "src: x.a++;" +
-        "env: (function() {" +
-          "x.a;" +
-        "});" +
-        "dest: 3;");
+    assertSafeMoveVisibility(lines(
+        "var x = {};",
+        "src: x.a++;",
+        "env: (function() {",
+        "  x.a;",
+        "});",
+        "dest: 3;"));
 
   }
 
@@ -235,18 +230,19 @@ public final class SideEffectsAnalysisTest extends CompilerTestCase {
     assertUnsafeMoveVisibility("var x,y; src: x++; env: y; dest: 3;");
 
     // Unsafe to move increment across read for local variables
-    assertUnsafeMoveVisibility("function f() {" +
-        "var x,y; src: x++; env: y; dest: 3;" +
-        "}");
+    assertUnsafeMoveVisibility(lines(
+        "function f() {",
+        "  var x,y; src: x++; env: y; dest: 3;",
+        "}"));
 
     // Unsafe to move increment across read for captured local variables
-    assertUnsafeMoveVisibility(
-        "function f() {" +
-          "var x,y; src: x++; env: y; dest: 3;" +
-          "function inner() {" +
-            "x; y;" +
-          "}" +
-         "}");
+    assertUnsafeMoveVisibility(lines(
+        "function f() {",
+        "  var x,y; src: x++; env: y; dest: 3;",
+        "  function inner() {",
+        "    x; y;",
+        "  }",
+        "}"));
 
     // Unsafe to move increment across read for heap locations
     assertUnsafeMoveVisibility("var x,y; src: x.a++; env: y.b; dest: 3;");
@@ -255,18 +251,19 @@ public final class SideEffectsAnalysisTest extends CompilerTestCase {
     assertUnsafeMoveVisibility("var x,y; src: y; env: x++; dest: 3;");
 
     // Unsafe to move read across increment for local variables
-    assertUnsafeMoveVisibility("function f() {" +
-        "var x,y; src: x; env: y++; dest: 3;" +
-        "}");
+    assertUnsafeMoveVisibility(lines(
+        "function f() {",
+        "  var x,y; src: x; env: y++; dest: 3;",
+        "}"));
 
     // Unsafe to move read across increment for captured local variables
-    assertUnsafeMoveVisibility(
-        "function f() {" +
-          "var x,y; src: x; env: y++; dest: 3;" +
-          "function inner() {" +
-            "x; y;" +
-          "}" +
-         "}");
+    assertUnsafeMoveVisibility(lines(
+        "function f() {",
+        "  var x,y; src: x; env: y++; dest: 3;",
+        "  function inner() {",
+        "    x; y;",
+        "  }",
+        "}"));
 
     // Unsafe to move read across increment for heap locations
     assertUnsafeMoveVisibility("var x,y; src: x.a; env: y.b++; dest: 3;");
@@ -275,18 +272,19 @@ public final class SideEffectsAnalysisTest extends CompilerTestCase {
     assertUnsafeMoveVisibility("var x,y; src: x = 7; env: y = 3; dest: 3;");
 
     // Unsafe to move write across write for local variables
-    assertUnsafeMoveVisibility("function f() {" +
-        "var x,y; src: x = 7; env: y = 3; dest: 3;" +
-        "}");
+    assertUnsafeMoveVisibility(lines(
+        "function f() {",
+        "  var x,y; src: x = 7; env: y = 3; dest: 3;",
+        "}"));
 
     // Unsafe to move write across write for captured local variables
-    assertUnsafeMoveVisibility(
-        "function f() {" +
-          "var x,y; src: x = 7; env: y = 3; dest: 3;" +
-          "function inner() {" +
-            "x; y;" +
-          "}" +
-         "}");
+    assertUnsafeMoveVisibility(lines(
+        "function f() {",
+        "  var x,y; src: x = 7; env: y = 3; dest: 3;",
+        "  function inner() {",
+        "    x; y;",
+        "  }",
+        "}"));
 
     // Unsafe to move write across write for heap locations
     assertUnsafeMoveVisibility("var x,y; src: x.a = 7; env: y.b = 3; dest: 3;");
@@ -300,26 +298,45 @@ public final class SideEffectsAnalysisTest extends CompilerTestCase {
     // TODO(dcc): implement interprocedural side effect analysis.
 
     // Source makes call, env refs global
-    assertUnsafeMoveVisibility(
-        "var x = {};" +
-        "var g = function(){};" +
-        "function f(){" +
-          "var y;" +
-          "src: g();" +
-          "env: x;" +
-          "dest: 3;" +
-          "}");
+    assertUnsafeMoveVisibility(lines(
+        "var x = {};",
+        "var g = function(){};",
+        "function f(){",
+        "  var y;",
+        "  src: g();",
+        "  env: x;",
+        "  dest: 3;",
+        "}"));
 
     // Source makes refs global, env makes call
-    assertUnsafeMoveVisibility(
-        "var x = {};" +
-        "var g = function(){};" +
-        "function f(){" +
-          "var y;" +
-          "src: x;" +
-          "env: g();" +
-          "dest: 3;" +
-          "}");
+    assertUnsafeMoveVisibility(lines(
+        "var x = {};",
+        "var g = function(){};",
+        "function f(){",
+        "  var y;",
+        "  src: x;",
+        "  env: g();",
+        "  dest: 3;",
+        "}"));
+
+    setAcceptedLanguage(LanguageMode.ECMASCRIPT_2015);
+    // Source makes a taggedTemplate Call.
+    assertUnsafeMoveVisibility(lines(
+        "function taggedTemplate(){};",
+        "function f(){",
+        "  src: taggedTemplate`tTemplate`;",
+        "  env: 24;",
+        "  dest: 42;",
+        "}"));
+
+    // Env makes a taggedTemplate Call.
+    assertUnsafeMoveVisibility(lines(
+        "function taggedTemplate(){};",
+        "function f(){",
+        "  src: 24;",
+        "  env: taggedTemplate`tTemplate`;",
+        "  dest: 42;",
+        "}"));
   }
 
   public void testVisibilityMergesParametersWithHeap() {
@@ -328,212 +345,200 @@ public final class SideEffectsAnalysisTest extends CompilerTestCase {
     // parameters can be references and modified via the arguments object.
 
     // Source changes heap, env refs parameter
-    assertUnsafeMoveVisibility(
-        "var x = {};" +
-        "function f(y){" +
-          "src: x[0]++;" +
-          "env: y;" +
-          "dest: 3;" +
-          "}");
+    assertUnsafeMoveVisibility(lines(
+        "var x = {};",
+        "function f(y){",
+        "  src: x[0]++;",
+        "  env: y;",
+        "  dest: 3;",
+        "}"));
 
     // Source refs heap, env changes parameters
-    assertUnsafeMoveVisibility(
-        "var x = {};" +
-        "function f(y){" +
-          "src: x[0];" +
-          "env: y++;" +
-          "dest: 3;" +
-          "}");
+    assertUnsafeMoveVisibility(lines(
+        "var x = {};",
+        "function f(y){",
+        "  src: x[0];",
+        "  env: y++;",
+        "  dest: 3;",
+        "}"));
 
     // Source changes arguments explicitly, env refs parameter
-    assertUnsafeMoveVisibility(
-        "var x = {};" +
-        "function f(y){" +
-          "src: arguments[0]++;" +
-          "env: y;" +
-          "dest: 3;" +
-          "}");
+    assertUnsafeMoveVisibility(lines(
+        "var x = {};",
+        "function f(y){",
+        "  src: arguments[0]++;",
+        "  env: y;",
+        "  dest: 3;",
+        "}"));
 
     // Source refs arguments explicitly, env changes parameter
-    assertUnsafeMoveVisibility(
-        "var x = {};" +
-        "function f(y){" +
-          "src: arguments[0];" +
-          "env: y++;" +
-          "dest: 3;" +
-          "}");
+    assertUnsafeMoveVisibility(lines(
+        "var x = {};",
+        "function f(y){",
+        "  src: arguments[0];",
+        "  env: y++;",
+        "  dest: 3;",
+        "}"));
   }
 
   public void testMovedSideEffectsMustHaveSameControlFlow() {
 
     // Safe to move within IF block
-    assertSafeMoveVisibility(
-        "var a;" +
-        "function f() {" +
-          "var l;" +
-          "if (l) {" +
-            "src: a++;" +
-            "env: 3;" +
-            "dest: 3;" +
-          "}" +
-        "}"
-    );
+    assertSafeMoveVisibility(lines(
+        "var a;",
+        "function f() {",
+        "  var l;",
+        "  if (l) {",
+        "    src: a++;",
+        "    env: 3;",
+        "    dest: 3;",
+        "  }",
+        "}"));
 
     // Unsafe to move between two IF blocks
-    assertUnsafeMoveVisibility(
-        "var a;" +
-        "function f() {" +
-          "var l;" +
-          "if (l) {" +
-            "src: a++;" +
-            "env: 3;" +
-          "}" +
-          "if (l) {" +
-          "dest: 3;" +
-          "}" +
-        "}"
-    );
+    assertUnsafeMoveVisibility(lines(
+        "var a;",
+        "function f() {",
+        "  var l;",
+        "  if (l) {",
+        "    src: a++;",
+        "    env: 3;",
+        "  }",
+        "  if (l) {",
+        "    dest: 3;",
+        "  }",
+        "}"));
 
     // Unsafe to move between then/else of same IF block
-    assertUnsafeMoveVisibility(
-        "var a;" +
-        "function f() {" +
-          "var l;" +
-          "if (l) {" +
-            "src: a++;" +
-            "env: 3;" +
-          "} else {" +
-            "dest: 3;" +
-          "}" +
-        "}"
-    );
+    assertUnsafeMoveVisibility(lines(
+        "var a;",
+        "function f() {",
+        "  var l;",
+        "  if (l) {",
+        "    src: a++;",
+        "    env: 3;",
+        "  } else {",
+        "    dest: 3;",
+        "  }",
+        "}"));
 
     // Safe to move within WHILE block
-    assertSafeMoveVisibility(
-        "var a;" +
-        "function f() {" +
-          "var l;" +
-          "while (l) {" +
-            "src: a++;" +
-            "env: 3;" +
-            "dest: 3;" +
-          "}" +
-        "}"
-    );
+    assertSafeMoveVisibility(lines(
+        "var a;",
+        "function f() {",
+        "  var l;",
+        "  while (l) {",
+        "    src: a++;",
+        "    env: 3;",
+        "    dest: 3;",
+        "  }",
+        "}"));
 
     // Unsafe to move within WHILE block with BREAK
-    assertUnsafeMoveVisibility(
-        "var a;" +
-        "function f() {" +
-          "var l;" +
-          "while (l) {" +
-            "src: a++;" +
-            "env: l;" +
-            "break;" +
-            "dest: 3;" +
-          "}" +
-        "}"
-    );
+    assertUnsafeMoveVisibility(lines(
+        "var a;",
+        "function f() {",
+        "  var l;",
+        "  while (l) {",
+        "    src: a++;",
+        "    env: l;",
+        "    break;",
+        "    dest: 3;",
+        "  }",
+        "}"));
 
     // Unsafe to move within WHILE block with continue
-    assertUnsafeMoveVisibility(
-        "var a;" +
-        "function f() {" +
-          "var l;" +
-          "while (l) {" +
-            "src: a++;" +
-            "env: 3;" +
-            "continue;" +
-            "dest: 3;" +
-          "}" +
-        "}"
-    );
+    assertUnsafeMoveVisibility(lines(
+        "var a;",
+        "function f() {",
+        "  var l;",
+        "  while (l) {",
+        "    src: a++;",
+        "    env: 3;",
+        "    continue;",
+        "    dest: 3;",
+        "  }",
+        "}"));
 
     // Unsafe to move within WHILE block with continue
-    assertUnsafeMoveVisibility(
-        "var a;" +
-        "function f() {" +
-          "var l;" +
-          "while (l) {" +
-            "src: a++;" +
-            "env: 3;" +
-            "return;" +
-            "dest: 3;" +
-          "}" +
-        "}"
-    );
+    assertUnsafeMoveVisibility(lines(
+        "var a;",
+        "function f() {",
+        "  var l;",
+        "  while (l) {",
+        "    src: a++;",
+        "    env: 3;",
+        "    return;",
+        "    dest: 3;",
+        "  }",
+        "}"));
 
     // Safe to move within DO
-    assertSafeMoveVisibility(
-        "var a;" +
-        "function f() {" +
-          "var l;" +
-          "do {" +
-            "src: a++;" +
-            "env: 3;" +
-            "dest: 3;" +
-          "} while(l)" +
-        "}"
-    );
+    assertSafeMoveVisibility(lines(
+        "var a;",
+        "function f() {",
+        "  var l;",
+        "  do {",
+        "    src: a++;",
+        "    env: 3;",
+        "    dest: 3;",
+        "  } while(l)",
+        "}"));
 
     // Unsafe to move outside DO
-    assertUnsafeMoveVisibility(
-        "var a;" +
-        "function f() {" +
-          "var l;" +
-          "do {" +
-            "src: a++;" +
-            "env: 3;" +
-          "} while(l)" +
-          "dest: 3;" +
-        "}"
-    );
+    assertUnsafeMoveVisibility(lines(
+        "var a;",
+        "function f() {",
+        "  var l;",
+        "  do {",
+        "    src: a++;",
+        "    env: 3;",
+        "  } while(l)",
+        "  dest: 3;",
+        "}"));
 
     // It should be safe to move within CASE
     // but we disallow for now because analyzing
     // CASE fall-through and BREAKs is complicated.
-    assertUnsafeMoveVisibility(
-        "var a;" +
-        "function f() {" +
-          "var l;" +
-          "switch(l) {" +
-            "case 17:" +
-              "src: a++;" +
-              "env: 3;" +
-              "dest: 3;" +
-            "break;" +
-          "}" +
-        "}"
-    );
+    assertUnsafeMoveVisibility(lines(
+        "var a;",
+        "function f() {",
+        "  var l;",
+        "  switch(l) {",
+        "    case 17:",
+        "      src: a++;",
+        "      env: 3;",
+        "      dest: 3;",
+        "    break;",
+        "  }",
+        "}"));
 
     // Unsafe to move between CASEs
-    assertUnsafeMoveVisibility(
-        "var a;" +
-        "function f() {" +
-          "var l;" +
-          "switch(l) {" +
-            "case 17:" +
-              "src: a++;" +
-              "env: 3;" +
-            "break;" +
-            "case 18:" +
-              "dest: 3;" +
-            "break;" +
-          "}" +
-        "}"
-    );
+    assertUnsafeMoveVisibility(lines(
+        "var a;",
+        "function f() {",
+        "  var l;",
+        "  switch(l) {",
+        "    case 17:",
+        "      src: a++;",
+        "      env: 3;",
+        "    break;",
+        "    case 18:",
+        "      dest: 3;",
+        "    break;",
+        "  }",
+        "}"));
 
     // Unsafe to move between FUNCTIONs
-    assertUnsafeMoveVisibility(
-        "var a;" +
-        "function f() {" +
-          "src: a++;" +
-          "env: 3;" +
-        "}" +
-        "function g() {" +
-          "dest: 3;" +
-        "}"
-    );
+    assertUnsafeMoveVisibility(lines(
+        "var a;",
+        "function f() {",
+        "  src: a++;",
+        "  env: 3;",
+        "}",
+        "function g() {",
+        "  dest: 3;",
+        "}"));
   }
 
   private SideEffectsAnalysis.AbstractMotionEnvironment environment(
@@ -543,6 +548,15 @@ public final class SideEffectsAnalysisTest extends CompilerTestCase {
         ImmutableSet.copyOf(nodes));
   }
 
+  /**
+   * Asserts whether it is safe to move code labeled with {@code src} across
+   * an environment labeled {@code env} to another program point (immediately
+   * preceding code labeled {@code dest}).
+   *
+   * @param abstraction The type of location abstraction to use for analysis
+   * @param src The code snippet under test.
+   * @param expected The expected result of analysis
+   */
   private void assertMove(LocationAbstractionMode abstraction,
       String src,
       boolean expected) {
@@ -583,9 +597,9 @@ public final class SideEffectsAnalysisTest extends CompilerTestCase {
 
     currentLocationAbstractionIdentifier = locationAbstractionIdentifier;
 
-    testSame(SHARED_EXTERNS, js, null);
+    testSame(SHARED_EXTERNS, js);
 
-    currentJsRoot = currentCompiler.jsRoot;
+    currentJsRoot = getLastCompiler().jsRoot;
 
     return currentAnalysis;
   }
@@ -594,7 +608,7 @@ public final class SideEffectsAnalysisTest extends CompilerTestCase {
   private Node findLabeledStatement(String label) {
     LabeledStatementSearcher s = new LabeledStatementSearcher(label);
 
-    new NodeTraversal(currentCompiler, s).traverse(currentCompiler.jsRoot);
+    NodeTraversal.traverseEs6(getLastCompiler(), getLastCompiler().jsRoot, s);
     assertNotNull("Label " + label + " should be in the source code", s.found);
 
     return s.found;
@@ -606,7 +620,7 @@ public final class SideEffectsAnalysisTest extends CompilerTestCase {
    * Given "foo", finds the statement a = x in
    * foo: a = x;
    */
-  private class LabeledStatementSearcher extends AbstractPostOrderCallback {
+  private static class LabeledStatementSearcher extends AbstractPostOrderCallback {
     Node found = null;
     final String target;
 
@@ -615,9 +629,7 @@ public final class SideEffectsAnalysisTest extends CompilerTestCase {
     }
     @Override
     public void visit(NodeTraversal t, Node n, Node parent) {
-      if (n.isLabel() &&
-          target.equals(n.getFirstChild().getString())) {
-
+      if (n.isLabel() && target.equals(n.getFirstChild().getString())) {
         found = n.getLastChild();
       }
     }

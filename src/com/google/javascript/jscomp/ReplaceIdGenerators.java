@@ -16,21 +16,16 @@
 
 package com.google.javascript.jscomp;
 
-import com.google.common.base.Preconditions;
+import static com.google.common.base.Preconditions.checkState;
+
 import com.google.common.collect.BiMap;
-import com.google.common.collect.HashBiMap;
 import com.google.common.collect.ImmutableBiMap;
+import com.google.common.primitives.Booleans;
 import com.google.debugging.sourcemap.Base64;
 import com.google.javascript.jscomp.NodeTraversal.AbstractPostOrderCallback;
 import com.google.javascript.rhino.IR;
 import com.google.javascript.rhino.JSDocInfo;
 import com.google.javascript.rhino.Node;
-
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.StringReader;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -56,7 +51,7 @@ class ReplaceIdGenerators implements CompilerPass {
       DiagnosticType.error(
           "JSC_CONFLICTING_ID_GENERATOR_TYPE",
           "Id generator can only be one of " +
-          "consistent, inconsistent, mapped or stable.");
+          "consistent, inconsistent, mapped, stable, or xid.");
 
   static final DiagnosticType INVALID_GENERATOR_ID_MAPPING =
       DiagnosticType.error(
@@ -73,6 +68,19 @@ class ReplaceIdGenerators implements CompilerPass {
           "JSC_INVALID_GENERATOR_PARAMETER",
           "An id generator must be called with a literal.");
 
+  static final DiagnosticType SHORTHAND_FUNCTION_NOT_SUPPORTED_IN_ID_GEN =
+      DiagnosticType.error(
+          "JSC_SHORTHAND_FUNCTION_NOT_SUPPORTED_IN_ID_GEN",
+          "Object literal shorthand functions is not allowed in the "
+          + "arguments of an id generator");
+
+  static final DiagnosticType COMPUTED_PROP_NOT_SUPPORTED_IN_ID_GEN =
+      DiagnosticType.error(
+          "JSC_COMPUTED_PROP_NOT_SUPPORTED_IN_ID_GEN",
+          "Object literal computed property name is not allowed in the "
+          + "arguments of an id generator");
+
+
   private final AbstractCompiler compiler;
   private final Map<String, NameSupplier> nameGenerators;
   private final Map<String, Map<String, String>> consistNameMap;
@@ -81,25 +89,22 @@ class ReplaceIdGenerators implements CompilerPass {
   private final Map<String, BiMap<String, String>> previousMap;
 
   private final boolean generatePseudoNames;
-
-  public static final RenamingMap UNIQUE = new UniqueRenamingToken();
-
-  private static class UniqueRenamingToken implements RenamingMap {
-    @Override public String get(String value) { return null; }
-  }
+  private final Xid.HashFunction xidHashFunction;
 
   public ReplaceIdGenerators(
       AbstractCompiler compiler, Map<String, RenamingMap> idGens,
       boolean generatePseudoNames,
-      String previousMapSerialized) {
+      String previousMapSerialized,
+      Xid.HashFunction xidHashFunction) {
     this.compiler = compiler;
     this.generatePseudoNames = generatePseudoNames;
+    this.xidHashFunction = xidHashFunction;
     nameGenerators = new LinkedHashMap<>();
     idGeneratorMaps = new LinkedHashMap<>();
     consistNameMap = new LinkedHashMap<>();
 
     Map<String, BiMap<String, String>> previousMap;
-    previousMap = parsePreviousResults(previousMapSerialized);
+    previousMap = IdMappingUtil.parseSerializedIdMappings(previousMapSerialized);
     this.previousMap = previousMap;
 
     if (idGens != null) {
@@ -124,7 +129,8 @@ class ReplaceIdGenerators implements CompilerPass {
     CONSISTENT,
     INCONSISTENT,
     MAPPED,
-    STABLE
+    STABLE,
+    XID
   }
 
   private static interface NameSupplier {
@@ -132,16 +138,16 @@ class ReplaceIdGenerators implements CompilerPass {
     RenameStrategy getRenameStrategy();
   }
 
-  private static class ObfuscatedNameSuppier implements NameSupplier {
+  private static class ObfuscatedNameSupplier implements NameSupplier {
     private final NameGenerator generator;
     private final Map<String, String> previousMappings;
-    private RenameStrategy renameStrategy;
+    private final RenameStrategy renameStrategy;
 
-    public ObfuscatedNameSuppier(
+    public ObfuscatedNameSupplier(
         RenameStrategy renameStrategy, BiMap<String, String> previousMappings) {
       this.previousMappings = previousMappings.inverse();
       this.generator =
-          new NameGenerator(previousMappings.keySet(), "", null);
+          new DefaultNameGenerator(previousMappings.keySet(), "", null);
       this.renameStrategy = renameStrategy;
     }
 
@@ -160,11 +166,11 @@ class ReplaceIdGenerators implements CompilerPass {
     }
   }
 
-  private static class PseudoNameSuppier implements NameSupplier {
+  private static class PseudoNameSupplier implements NameSupplier {
     private int counter = 0;
-    private RenameStrategy renameStrategy;
+    private final RenameStrategy renameStrategy;
 
-    public PseudoNameSuppier(RenameStrategy renameStrategy) {
+    public PseudoNameSupplier(RenameStrategy renameStrategy) {
       this.renameStrategy = renameStrategy;
     }
 
@@ -193,6 +199,23 @@ class ReplaceIdGenerators implements CompilerPass {
     }
   }
 
+  private static class XidNameSupplier implements NameSupplier {
+    final Xid xid;
+
+    XidNameSupplier(Xid.HashFunction hashFunction) {
+      this.xid = hashFunction == null ? new Xid() : new Xid(hashFunction);
+    }
+
+    @Override
+    public String getName(String id, String name) {
+      return xid.get(name);
+    }
+    @Override
+    public RenameStrategy getRenameStrategy() {
+      return RenameStrategy.XID;
+    }
+  }
+
   private static class MappedNameSupplier implements NameSupplier {
     private final RenamingMap map;
 
@@ -218,16 +241,18 @@ class ReplaceIdGenerators implements CompilerPass {
         ImmutableBiMap.<String, String>of();
     if (renameStrategy == RenameStrategy.STABLE) {
       return new StableNameSupplier();
+    } else if (renameStrategy == RenameStrategy.XID) {
+      return new XidNameSupplier(this.xidHashFunction);
     } else if (generatePseudoNames) {
-      return new PseudoNameSuppier(renameStrategy);
+      return new PseudoNameSupplier(renameStrategy);
     } else {
-      return new ObfuscatedNameSuppier(renameStrategy, previousMappings);
+      return new ObfuscatedNameSupplier(renameStrategy, previousMappings);
     }
   }
 
   private static NameSupplier createNameSupplier(
       RenameStrategy renameStrategy, RenamingMap mappings) {
-    Preconditions.checkState(renameStrategy == RenameStrategy.MAPPED);
+    checkState(renameStrategy == RenameStrategy.MAPPED);
     return new MappedNameSupplier(mappings);
   }
 
@@ -241,10 +266,12 @@ class ReplaceIdGenerators implements CompilerPass {
       }
 
       int numGeneratorAnnotations =
-          (doc.isConsistentIdGenerator() ? 1 : 0) +
-          (doc.isIdGenerator() ? 1 : 0) +
-          (doc.isStableIdGenerator() ? 1 : 0) +
-          (doc.isMappedIdGenerator() ? 1 : 0);
+          Booleans.countTrue(
+              doc.isConsistentIdGenerator(),
+              doc.isIdGenerator(),
+              doc.isStableIdGenerator(),
+              doc.isXidGenerator(),
+              doc.isMappedIdGenerator());
       if (numGeneratorAnnotations == 0) {
         return;
       } else if (numGeneratorAnnotations > 1) {
@@ -254,7 +281,7 @@ class ReplaceIdGenerators implements CompilerPass {
       String name = null;
       if (n.isAssign()) {
         name = n.getFirstChild().getQualifiedName();
-      } else if (n.isVar()) {
+      } else if (NodeUtil.isNameDeclaration(n)) {
         name = n.getFirstChild().getString();
       } else if (n.isFunction()){
         name = n.getFirstChild().getString();
@@ -272,6 +299,10 @@ class ReplaceIdGenerators implements CompilerPass {
         nameGenerators.put(
             name, createNameSupplier(
                 RenameStrategy.STABLE, previousMap.get(name)));
+      } else if (doc.isXidGenerator()) {
+        nameGenerators.put(
+            name, createNameSupplier(
+                RenameStrategy.XID, previousMap.get(name)));
       } else if (doc.isIdGenerator()) {
         nameGenerators.put(
             name, createNameSupplier(
@@ -294,9 +325,9 @@ class ReplaceIdGenerators implements CompilerPass {
 
   @Override
   public void process(Node externs, Node root) {
-    NodeTraversal.traverse(compiler, root, new GatherGenerators());
+    NodeTraversal.traverseEs6(compiler, root, new GatherGenerators());
     if (!nameGenerators.isEmpty()) {
-      NodeTraversal.traverse(compiler, root, new ReplaceGenerators());
+      NodeTraversal.traverseEs6(compiler, root, new ReplaceGenerators());
     }
   }
 
@@ -313,8 +344,8 @@ class ReplaceIdGenerators implements CompilerPass {
         return;
       }
 
-      if (!t.inGlobalScope() &&
-          nameGenerator.getRenameStrategy() == RenameStrategy.INCONSISTENT) {
+      if (!t.inGlobalHoistScope()
+          && nameGenerator.getRenameStrategy() == RenameStrategy.INCONSISTENT) {
         // Warn about calls not in the global scope.
         compiler.report(t.makeError(n, NON_GLOBAL_ID_GENERATOR_CALL));
         return;
@@ -330,25 +361,34 @@ class ReplaceIdGenerators implements CompilerPass {
         }
       }
 
-      Node arg = n.getFirstChild().getNext();
+      Node arg = n.getSecondChild();
       if (arg == null) {
         compiler.report(t.makeError(n, INVALID_GENERATOR_PARAMETER));
       } else if (arg.isString()) {
         String rename = getObfuscatedName(
             arg, callName, nameGenerator, arg.getString());
         parent.replaceChild(n, IR.string(rename));
-        compiler.reportCodeChange();
+        t.reportCodeChange();
       } else if (arg.isObjectLit()) {
         for (Node key : arg.children()) {
+          if (key.isMemberFunctionDef()) {
+            compiler.report(t.makeError(n, SHORTHAND_FUNCTION_NOT_SUPPORTED_IN_ID_GEN));
+            return;
+          }
+          if (key.isComputedProp()) {
+            compiler.report(t.makeError(n, COMPUTED_PROP_NOT_SUPPORTED_IN_ID_GEN));
+            return;
+          }
+
           String rename = getObfuscatedName(
               key, callName, nameGenerator, key.getString());
           key.setString(rename);
           // Prevent standard renaming by marking the key as quoted.
           key.putBooleanProp(Node.QUOTED_PROP, true);
         }
-        arg.detachFromParent();
+        arg.detach();
         parent.replaceChild(n, arg);
-        compiler.reportCodeChange();
+        t.reportCodeChange();
       } else {
         compiler.report(t.makeError(n, INVALID_GENERATOR_PARAMETER));
       }
@@ -381,88 +421,11 @@ class ReplaceIdGenerators implements CompilerPass {
    *     replacements.
    */
   public String getSerializedIdMappings() {
-    StringBuilder sb = new StringBuilder();
-    for (Map.Entry<String, Map<String, String>> replacements :
-        idGeneratorMaps.entrySet()) {
-      if (!replacements.getValue().isEmpty()) {
-        sb.append("[");
-        sb.append(replacements.getKey());
-        sb.append("]\n\n");
-        for (Map.Entry<String, String> replacement :
-            replacements.getValue().entrySet()) {
-          sb.append(replacement.getKey());
-          sb.append(':');
-          sb.append(replacement.getValue());
-          sb.append("\n");
-        }
-        sb.append("\n");
-      }
-    }
-    return sb.toString();
-  }
-
-  private Map<String, BiMap<String, String>> parsePreviousResults(
-      String serializedMap) {
-
-    //
-    // The expected format looks like this:
-    //
-    // [generatorName]
-    // someId:someFile:theLine:theColumn
-    //
-    //
-
-    if (serializedMap == null || serializedMap.isEmpty()) {
-      return Collections.emptyMap();
-    }
-
-    Map<String, BiMap<String, String>> resultMap = new HashMap<>();
-    BufferedReader reader = new BufferedReader(new StringReader(serializedMap));
-    BiMap<String, String> currentSectionMap = null;
-
-    String line;
-    int lineIndex = 0;
-    try {
-      while ((line = reader.readLine()) != null) {
-        lineIndex++;
-        if (line.isEmpty()) {
-          continue;
-        }
-        if (line.charAt(0) == '[') {
-          String currentSection = line.substring(1, line.length() - 1);
-          currentSectionMap = resultMap.get(currentSection);
-          if (currentSectionMap == null) {
-            currentSectionMap = HashBiMap.create();
-            resultMap.put(currentSection, currentSectionMap);
-          } else {
-            reportInvalidLine(line, lineIndex);
-            return Collections.emptyMap();
-          }
-        } else {
-          int split = line.indexOf(':');
-          if (split != -1) {
-            String name = line.substring(0, split);
-            String location = line.substring(split + 1, line.length());
-            currentSectionMap.put(name, location);
-          } else {
-            reportInvalidLine(line, lineIndex);
-            return Collections.emptyMap();
-          }
-        }
-      }
-    } catch (IOException e) {
-      JSError.make(INVALID_GENERATOR_ID_MAPPING, e.getMessage());
-    }
-    return resultMap;
-  }
-
-  private static void reportInvalidLine(String line, int lineIndex) {
-    JSError.make(INVALID_GENERATOR_ID_MAPPING,
-        "line(" + line + "): " + lineIndex);
+    return IdMappingUtil.generateSerializedIdMappings(idGeneratorMaps);
   }
 
   static String getIdForGeneratorNode(boolean consistent, Node n) {
-    Preconditions.checkState(n.isString() || n.isStringKey());
+    checkState(n.isString() || n.isStringKey(), n);
     if (consistent) {
       return n.getString();
     } else {

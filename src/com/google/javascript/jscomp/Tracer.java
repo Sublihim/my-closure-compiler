@@ -16,14 +16,16 @@
 
 package com.google.javascript.jscomp;
 
+import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.base.Strings.nullToEmpty;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
-import com.google.common.base.Preconditions;
-
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,7 +33,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.annotation.Nullable;
 
 /**
@@ -173,8 +174,7 @@ final class Tracer {
    * a list of additional statistics that the user wants to keep track
    * of.
    */
-  private static List<TracingStatistic> extraTracingStatistics =
-      new CopyOnWriteArrayList<>();
+  private static final List<TracingStatistic> extraTracingStatistics = new CopyOnWriteArrayList<>();
 
   /** Values returned by extraTracingStatistics */
   private long[] extraTracingValues;
@@ -234,7 +234,7 @@ final class Tracer {
    */
   Tracer(@Nullable String type, @Nullable String comment) {
     this.type = type;
-    this.comment = comment == null ? "" : comment;
+    this.comment = nullToEmpty(comment);
     startTimeMs = clock.currentTimeMillis();
     startThread = Thread.currentThread();
     if (!extraTracingStatistics.isEmpty()) {
@@ -392,7 +392,7 @@ final class Tracer {
    * @return The time that this trace actually ran
    */
   long stop(int silenceThreshold) {
-    Preconditions.checkState(Thread.currentThread() == startThread);
+    checkState(Thread.currentThread() == startThread);
 
     ThreadTrace trace = getThreadTrace();
     // Do nothing if the thread trace was not initialized.
@@ -487,15 +487,16 @@ final class Tracer {
     // a different package that happens to call Tracer without knowledge of the
     // application authors.
     if (!trace.isInitialized()) {
-      logger.log(Level.WARNING,
-                 "Tracer log requested for this thread but was not "
-                 + "initialized using Tracer.initCurrentThreadTrace().",
-                 new Throwable());
+      logger.log(
+          Level.INFO,
+          "Tracer log requested for this thread but was not "
+              + "initialized using Tracer.initCurrentThreadTrace().",
+          new Throwable());
       return;
     }
 
     if (!trace.isEmpty()) {
-      logger.log(Level.WARNING, "timers:\n{0}", getCurrentThreadTraceReport());
+      logger.log(Level.INFO, "timers:\n{0}", getCurrentThreadTraceReport());
     }
   }
 
@@ -740,7 +741,7 @@ final class Tracer {
     void startEvent(Tracer t) {
       events.add(new Event(true, t));
       boolean notAlreadyOutstanding = outstandingEvents.add(t);
-      Preconditions.checkState(notAlreadyOutstanding);
+      checkState(notAlreadyOutstanding);
     }
 
     /**
@@ -776,7 +777,7 @@ final class Tracer {
         for (int i = 0; i < events.size(); i++) {
           Event e = events.get(i);
           if (e.tracer == t) {
-            Preconditions.checkState(e.isStart);
+            checkState(e.isStart);
             events.remove(i);
             removed = true;
             break;
@@ -785,7 +786,7 @@ final class Tracer {
 
         // Only assert if we didn't find the original and the events
         // weren't truncated.
-        Preconditions.checkState(removed || isEventsTruncated);
+        checkState(removed || isEventsTruncated);
       } else {
         events.add(new Event(false, t));
       }
@@ -854,7 +855,7 @@ final class Tracer {
       int numDigits = getMaxDigits();
       StringBuilder sb = new StringBuilder();
       long etime = -1;
-      LinkedList<String> indent = prettyPrint ? new LinkedList<String>() : null;
+      Deque<String> indent = prettyPrint ? new ArrayDeque<String>() : null;
       for (Event e : events) {
         if (prettyPrint && !e.isStart && !indent.isEmpty()) {
           indent.pop();
@@ -935,9 +936,8 @@ final class Tracer {
     }
   }
 
-  /** Holds the ThreadTrace for each thread.  */
-  private static ThreadLocal<ThreadTrace> traces =
-      new ThreadLocal<>();
+  /** Holds the ThreadTrace for each thread. */
+  private static final ThreadLocal<ThreadTrace> traces = new ThreadLocal<>();
 
   /**
    * Get the ThreadTrace for the current thread, creating one if necessary.

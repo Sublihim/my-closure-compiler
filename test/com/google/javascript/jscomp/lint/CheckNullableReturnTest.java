@@ -20,22 +20,16 @@ import com.google.javascript.jscomp.CheckLevel;
 import com.google.javascript.jscomp.Compiler;
 import com.google.javascript.jscomp.CompilerOptions;
 import com.google.javascript.jscomp.CompilerPass;
-import com.google.javascript.jscomp.CompilerTestCase;
 import com.google.javascript.jscomp.DiagnosticGroups;
-
-import java.io.IOException;
+import com.google.javascript.jscomp.TypeICompilerTestCase;
 
 /**
  * Test case for {@link CheckNullableReturn}.
  *
  */
-public final class CheckNullableReturnTest extends CompilerTestCase {
-  private static String externs = "/** @constructor */ function SomeType() {}";
-
-  @Override
-  public void setUp() throws IOException {
-    enableTypeCheck(CheckLevel.ERROR);
-  }
+public final class CheckNullableReturnTest extends TypeICompilerTestCase {
+  private static final String EXTERNS =
+      DEFAULT_EXTERNS + "/** @constructor */ function SomeType() {}";
 
   @Override
   protected CompilerPass getProcessor(Compiler compiler) {
@@ -45,7 +39,7 @@ public final class CheckNullableReturnTest extends CompilerTestCase {
   @Override
   protected CompilerOptions getOptions(CompilerOptions options) {
     super.getOptions(options);
-    options.setWarningLevel(DiagnosticGroups.LINT_CHECKS, CheckLevel.WARNING);
+    options.setWarningLevel(DiagnosticGroups.ANALYZER_CHECKS, CheckLevel.WARNING);
     return options;
   }
 
@@ -54,12 +48,18 @@ public final class CheckNullableReturnTest extends CompilerTestCase {
     return 1;
   }
 
+  @Override
+  public void setUp() throws Exception {
+    super.setUp();
+    enableTranspile();
+  }
+
   public void testSimpleWarning() {
-    testError(""
-        + "/** @return {SomeType} */\n"
-        + "function f() {\n"
-        + "  return new SomeType();\n"
-        + "}");
+    testError(lines(
+        "/** @return {SomeType} */",
+        "function f() {",
+        "  return new SomeType();",
+        "}"));
   }
 
   public void testNullableReturn() {
@@ -67,13 +67,15 @@ public final class CheckNullableReturnTest extends CompilerTestCase {
     testBodyOk("if (a) { return null; } return {};");
     testBodyOk("switch(1) { case 12: return null; } return {};");
     testBodyOk(
-        "/** @return {number} */ function f() { var x; }; return null;");
+        "/** @return {number} */ function f() { return 42; }; return null;");
   }
 
   public void testNotNullableReturn()  {
     // Empty function body. Ignore this case. The remainder of the functions in
     // this test have non-empty bodies.
+    this.mode = TypeInferenceMode.OTI_ONLY;
     testBodyOk("");
+    this.mode = TypeInferenceMode.BOTH;
 
     // Simple case.
     testBodyError("return {};");
@@ -90,10 +92,11 @@ public final class CheckNullableReturnTest extends CompilerTestCase {
   }
 
   public void testFinallyStatements() {
-    testBodyOk("try { return null; } finally { }");
+    testBodyOk("try { return null; } finally { return {}; }");
     testBodyOk("try { } finally { return null; }");
     testBodyOk("try { return {}; } finally { return null; }");
     testBodyOk("try { return null; } finally { return {}; }");
+    this.mode = TypeInferenceMode.OTI_ONLY;
     testBodyError("try { } catch (e) { return null; } finally { return {}; }");
   }
 
@@ -104,13 +107,12 @@ public final class CheckNullableReturnTest extends CompilerTestCase {
     testBodyOk("if (false) return {}; return null;");
     testBodyOk("if (false) return null; else return {};");
 
-    testBodyError("if (1) return {}");
+    testBodyError("if (1) return {}; return {x: 42};");
     testBodyOk("if (1) { return null; } else { return {}; }");
 
     testBodyOk("if (0) return {}; return null;");
     testBodyOk("if (0) { return null; } else { return {}; }");
 
-    testBodyError("if (3) return {}");
     testBodyOk("if (3) return null; else return {};");
   }
 
@@ -120,103 +122,156 @@ public final class CheckNullableReturnTest extends CompilerTestCase {
     testBodyError("while (0) {} return {}");
 
     // Not known.
+    this.mode = TypeInferenceMode.OTI_ONLY;
     testBodyError("while(x) { return {}; }");
   }
 
   public void testTwoBranches() {
-    testError(""
-        + "/** @return {SomeType} */\n"
-        + "function f() {\n"
-        + "  if (foo) {\n"
-        + "    return new SomeType();\n"
-        + "  } else {\n"
-        + "    return new SomeType();\n"
-        + "  }\n"
-        + "}");
+    testError(lines(
+        "/** @return {SomeType} */",
+        "function f() {",
+        "  if (foo) {",
+        "    return new SomeType();",
+        "  } else {",
+        "    return new SomeType();",
+        "  }",
+        "}"));
+    testError(lines(
+        "var obj = {",
+        "  /** @return {SomeType} */",
+        "  f() {",
+        "    if (foo) {",
+        "      return new SomeType();",
+        "    } else {",
+        "      return new SomeType();",
+        "    }",
+        "  }",
+        "}"));
   }
 
   public void testTryCatch() {
-    testError(""
-        + "/** @return {SomeType} */\n"
-        + "function f() {\n"
-        + "  try {\n"
-        + "    return new SomeType();\n"
-        + "  } catch (e) {\n"
-        + "    return new SomeType();\n"
-        + "  }\n"
-        + "}");
+    testError(lines(
+        "/** @return {SomeType} */",
+        "function f() {",
+        "  try {",
+        "    return new SomeType();",
+        "  } catch (e) {",
+        "    return new SomeType();",
+        "  }",
+        "}"));
+    testError(lines(
+        "var obj = {",
+        "  /** @return {SomeType} */",
+        "  f() {",
+        "    try {",
+        "      return new SomeType();",
+        "    } catch (e) {",
+        "      return new SomeType();",
+        "    }",
+        "  }",
+        "}"));
 
-    testBodyOk(""
-        + "try {\n"
-        + "  if (a) throw '';\n"
-        + "} catch (e) {\n"
-        + "  return null;\n"
-        + "}\n"
-        + "return {}");
+    testBodyOk(lines(
+        "try {",
+        "  if (a) throw '';",
+        "} catch (e) {",
+        "  return null;",
+        "}",
+        "return {}"));
 
-    testBodyOk(""
-        + "try {\n"
-        + "  return bar();\n"
-        + "} catch (e) {\n"
-        + "} finally { }");
+    testBodyOk(lines(
+        "try {",
+        "  return bar();",
+        "} catch (e) {",
+        "} finally { return baz(); }"));
   }
 
   public void testNoExplicitReturn() {
-    testError(""
-        + "/** @return {SomeType} */\n"
-        + "function f() {\n"
-        + "  if (foo) {\n"
-        + "    return new SomeType();\n"
-        + "  }\n"
-        + "}");
+    this.mode = TypeInferenceMode.OTI_ONLY;
+    testError(lines(
+        "/** @return {SomeType} */",
+        "function f() {",
+        "  if (foo) {",
+        "    return new SomeType();",
+        "  }",
+        "}"));
   }
 
   public void testNoWarningIfCanReturnNull() {
-    testOk(""
-        + "/** @return {SomeType} */\n"
-        + "function f() {\n"
-        + "  if (foo) {\n"
-        + "    return new SomeType();\n"
-        + "  } else {\n"
-        + "    return null;\n"
-        + "  }\n"
-        + "}");
+    testOk(lines(
+        "/** @return {SomeType} */",
+        "function f() {",
+        "  if (foo) {",
+        "    return new SomeType();",
+        "  } else {",
+        "    return null;",
+        "  }",
+        "}"));
   }
 
   public void testNoWarningOnEmptyFunction() {
-    testOk(""
-        + "/** @return {SomeType} */\n"
-        + "function f() {}");
+    this.mode = TypeInferenceMode.OTI_ONLY;
+    testOk(lines(
+        "/** @return {SomeType} */",
+        "function f() {}"));
+    testOk(lines(
+        "var obj = {",
+        "  /** @return {SomeType} */\n",
+        "  f() {}",
+        "}"));
   }
 
   public void testNoWarningOnXOrNull() {
-    testOk(""
-        + "/**\n"
-        + " * @param {!Array.<!Object>} arr\n"
-        + " * @return {Object}\n"
-        + " */\n"
-        + "function f4(arr) {\n"
-        + "  return arr[0] || null;\n"
-        + "}");
+    testOk(lines(
+        "/**",
+        " * @param {!Array.<!Object>} arr",
+        " * @return {Object}",
+        " */",
+        "function f4(arr) {",
+        "  return arr[0] || null;",
+        "}"));
+    testOk(lines(
+        "var obj = {",
+        "  /**",
+        "   * @param {!Array.<!Object>} arr",
+        "   * @return {Object}",
+        "   */",
+        "  f4(arr) {",
+        "    return arr[0] || null;",
+        "  }",
+        "}"));
+  }
+
+  public void testNonfunctionTypeDoesntCrash() {
+    enableClosurePass();
+    testNoWarning(
+        DEFAULT_EXTERNS,
+        "goog.forwardDeclare('FunType'); /** @type {!FunType} */ (function() { return; })");
   }
 
   private static String createFunction(String body) {
     return "/** @return {?Object} */ function foo() {" + body + "}";
   }
 
+  private static String createShorthandFunctionInObjLit(String body) {
+    return "var obj = {/** @return {?Object} */ foo() {" + body + "}}";
+  }
+
   private void testOk(String js) {
-    testSame(externs, js, null);
+    testSame(EXTERNS, js);
   }
 
   private void testError(String js) {
-    testSame(externs, js, CheckNullableReturn.NULLABLE_RETURN_WITH_NAME);
+    testSame(EXTERNS, js, CheckNullableReturn.NULLABLE_RETURN_WITH_NAME);
   }
 
   private void testBodyOk(String body) {
     testOk(createFunction(body));
+    testOk(createShorthandFunctionInObjLit(body));
   }
 
   private void testBodyError(String body) {
     testError(createFunction(body));
+    testError(createShorthandFunctionInObjLit(body));
   }
 }
